@@ -1,0 +1,101 @@
+{
+    "name": "connext-vc-copilot",
+    "displayName": "Connext for Github Copilot",
+    "description": "Bringing the power of Connext Chatbot to GitHub Copilot Chat",
+    "version": "0.0.1",
+    "publisher": "Real-Time Innovations",
+    "icon": "images/bot_avatar.png",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/fercsrti77/connext-vc-copilot"
+    },
+    "engines": {
+        "vscode": "^1.93.0"
+    },
+    "categories": [
+        "AI"
+    ],
+    "activationEvents": [],
+    "extensionDependencies": [
+        "github.copilot-chat"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "connext-vc-copilot.login",
+                "title": "Connext: Login"
+            },
+            {
+                "command": "connext-vc-copilot.logout",
+                "title": "Connext: Logout"
+            },
+            {
+                "command": "connext-vc-copilot.explain",
+                "title": "Connext: Explain this",
+                "shortTitle": "Explain this"
+            },
+            {
+                "command": "connext-vc-copilot.fix",
+                "title": "Connext: Fix this",
+                "shortTitle": "Fix this"
+            }
+        ],
+        "chatParticipants": [
+            {
+                "id": "connext-vc-copilot.chat",
+                "name": "connext",
+                "description": "Ask questions to the Connext expert"
+            }
+        ],
+        "submenus": [
+            {
+                "id": "connext-vc-copilot.submenu",
+                "label": "Connext"
+            }
+        ],
+        "menus": {
+            "editor/context": [
+                {
+                    "submenu": "connext-vc-copilot.submenu",
+                    "group": "Connext"
+                }
+            ],
+            "connext-vc-copilot.submenu": [
+                {
+                    "command": "connext-vc-copilot.explain"
+                },
+                {
+                    "command": "connext-vc-copilot.fix"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src",
+        "test": "vscode-test"
+    },
+    "dependencies": {
+        "node-fetch": "^2.7.0",
+        "socket.io-client": "^4.7.5",
+        "uuid": "^10.0.0"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.7",
+        "@types/node": "20.x",
+        "@types/node-fetch": "^2.6.11",
+        "@types/socket.io-client": "^3.0.0",
+        "@types/uuid": "^10.0.0",
+        "@types/vscode": "^1.93.0",
+        "@typescript-eslint/eslint-plugin": "^8.3.0",
+        "@typescript-eslint/parser": "^8.3.0",
+        "@vscode/test-cli": "^0.0.10",
+        "@vscode/test-electron": "^2.4.1",
+        "eslint": "^9.9.1",
+        "typescript": "^5.5.4"
+    }
+}
