@@ -7,7 +7,7 @@
     "icon": "images/bot_avatar.png",
     "repository": {
         "type": "git",
-        "url": "https://github.com/fercsrti77/connext-vc-copilot"
+        "url": "https://github.com/rticommunity/rticonnext-vc-copilot"
     },
     "engines": {
         "vscode": "^1.93.0"
