@@ -12,26 +12,92 @@ import fetch from 'node-fetch';
 import io from "socket.io-client";
 import { Socket } from "socket.io-client";
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
 
-declare global {
-    var connextProduct: string;
-    var connextUsernameKey: string;
-    var connextPasswordKey: string;
-    var accessCode: string | undefined;
-    var storedUsername: string | undefined;
-    var storedPassword: string | undefined;
-    var connextIntelligenceUrl: string;
-    var connextAuth0Url: string;
+class GlobalState {
+    readonly connextProduct: string;
+    readonly connextUsernameKey: string;
+    readonly connextPasswordKey: string;
+    readonly connextIntelligenceUrl: string;
+    readonly connextAuth0Url: string;
+
+    extensionUri: vscode.Uri;
+    accessCode: string | undefined;
+    storedUsername: string | undefined;
+    storedPassword: string | undefined;
+
+    constructor() {
+        // Set to displayName
+        this.connextProduct = "Connext for Github Copilot";
+        this.connextUsernameKey = "connextUsername";
+        this.connextPasswordKey = "connextPassword";
+        this.connextIntelligenceUrl = "wss://sandbox-chatbot.rti.com";
+        this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
+
+        this.accessCode = undefined;
+        this.storedUsername = undefined;
+        this.storedPassword = undefined;
+        this.extensionUri = vscode.Uri.parse(''); // Placeholder value, update when valid value is available
+    }
 }
 
-globalThis.connextProduct = "Connext for Github Copilot";
-globalThis.connextUsernameKey = "connextUsername";
-globalThis.connextPasswordKey = "connextPassword";
-globalThis.connextIntelligenceUrl = "wss://sandbox-chatbot.rti.com";
-globalThis.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
-globalThis.accessCode = undefined;
-globalThis.storedUsername = undefined;
-globalThis.storedPassword = undefined;
+declare global {
+    var globalState: GlobalState;
+}
+
+globalThis.globalState = new GlobalState();
+
+interface Secrets {
+    clientId: string;
+    clientSecret: string;
+}
+
+/**
+ * Asynchronously reads a JSON file and extracts the clientId and clientSecret
+ * needed to get the access token using a password grant. Note that even 
+ * though the client ID and client secret are stored in a JSON file in 
+ * plaintext, the user cannot get a token without a username and password.
+ *
+ * @param filePath - The path to the JSON file containing the secrets.
+ * @returns A promise that resolves with the extracted secrets.
+ *
+ * @throws Will reject the promise with an error message if there is an issue reading the file or parsing the JSON.
+ *
+ * @example
+ * ```typescript
+ * getSecrets('/path/to/secrets.json')
+ *   .then(secrets => {
+ *     console.log(secrets.clientId);
+ *     console.log(secrets.clientSecret);
+ *   })
+ *   .catch(error => {
+ *     console.error(error);
+ *   });
+ * ```
+ */
+async function getSecrets(filePath: string): Promise<Secrets> {
+    return new Promise((resolve, reject) => {
+        fs.readFile(filePath, 'utf8', (err, data) => {
+            if (err) {
+                return reject('Error reading file: ' + err);
+            }
+
+            try {
+                // Parse the JSON data
+                const secrets = JSON.parse(data);
+
+                // Extract the secrets
+                const clientId = secrets.BOT_API_CLIENT_ID.value;
+                const clientSecret = secrets.BOT_API_CLIENT_SECRET.value;
+
+                // Resolve with the extracted secrets
+                resolve({ clientId, clientSecret });
+            } catch (parseError) {
+                reject('Error parsing JSON: ' + parseError);
+            }
+        });
+    });
+}
 
 /**
  * Makes an HTTP request to the specified URI with the given options.
@@ -47,7 +113,7 @@ async function makeHttpRequest(uri: string, options: fetch.RequestInit): Promise
         const data = await response.json(); // Parse the JSON response
         return data;
     } catch (error) {
-        vscode.window.showErrorMessage(`${globalThis.connextProduct}: Error making HTTP request: ${error}`)
+        vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Error making HTTP request: ${error}`)
         throw error;
     }
 }
@@ -131,12 +197,14 @@ function getPrompt(prompt: string, context: vscode.ChatContext): string {
  * It also creates a chat participant for handling user queries and interacting with the Connext Intelligence Platform.
  */
 export function activate(context: vscode.ExtensionContext) {
+    globalThis.globalState.extensionUri = context.extensionUri;
+
     // Register the 'connext-vc-copilot.login' command
     let cidpLogin = vscode.commands.registerCommand('connext-vc-copilot.login', async () => {
 
         // Check if username and password are already stored
-        const storedUsername = context.globalState.get<string>(globalThis.connextUsernameKey);
-        const storedPassword = context.globalState.get<string>(globalThis.connextPasswordKey);
+        const storedUsername = context.globalState.get<string>(globalThis.globalState.connextUsernameKey);
+        const storedPassword = context.globalState.get<string>(globalThis.globalState.connextPasswordKey);
 
         if (!storedUsername || !storedPassword) {
             // Ask for username if not stored
@@ -152,27 +220,27 @@ export function activate(context: vscode.ExtensionContext) {
                 placeHolder: 'Password',
                 password: true, // This will hide the password input
                 ignoreFocusOut: true,
-            });    
+            });
 
             // Check if user provided both credentials
             if (username && password) {
                 // Store credentials in global state
-                await context.globalState.update(globalThis.connextUsernameKey, username);
-                await context.globalState.update(globalThis.connextPasswordKey, password);
-                vscode.window.showInformationMessage(`${globalThis.connextProduct}: Credentials saved for user: ${username}`);
+                await context.globalState.update(globalThis.globalState.connextUsernameKey, username);
+                await context.globalState.update(globalThis.globalState.connextPasswordKey, password);
+                vscode.window.showInformationMessage(`${globalThis.globalState.connextProduct}: Credentials saved for user: ${username}`);
             } else {
-                vscode.window.showErrorMessage(`${globalThis.connextProduct}: Both username and password are required.`);
+                vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Both username and password are required.`);
                 return false;
             }
 
-            globalThis.storedUsername = username;
-            globalThis.storedPassword = password;
+            globalThis.globalState.storedUsername = username;
+            globalThis.globalState.storedPassword = password;
         } else {
-            globalThis.storedUsername = storedUsername;
-            globalThis.storedPassword = storedPassword;
-    
+            globalThis.globalState.storedUsername = storedUsername;
+            globalThis.globalState.storedPassword = storedPassword;
+
             // If credentials already exist, display a confirmation message
-            vscode.window.showInformationMessage(`${globalThis.connextProduct}: Welcome back, ${storedUsername}!`);
+            vscode.window.showInformationMessage(`${globalThis.globalState.connextProduct}: Welcome back, ${storedUsername}!`);
         }
 
         return true;
@@ -182,14 +250,14 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register the 'github.copilot-chat.logout' command
     let cidpLogout = vscode.commands.registerCommand('connext-vc-copilot.logout', async () => {
-        await context.globalState.update(globalThis.connextUsernameKey, undefined);
-        globalThis.storedUsername = undefined;
-        await context.globalState.update(globalThis.connextPasswordKey, undefined);
-        globalThis.storedPassword = undefined;
-        globalThis.accessCode = undefined
-        vscode.window.showInformationMessage(`${globalThis.connextProduct}: Credentials have been cleared.`);
+        await context.globalState.update(globalThis.globalState.connextUsernameKey, undefined);
+        globalThis.globalState.storedUsername = undefined;
+        await context.globalState.update(globalThis.globalState.connextPasswordKey, undefined);
+        globalThis.globalState.storedPassword = undefined;
+        globalThis.globalState.accessCode = undefined
+        vscode.window.showInformationMessage(`${globalThis.globalState.connextProduct}: Credentials have been cleared.`);
     });
-    
+
     context.subscriptions.push(cidpLogout);
 
     // Explain with Connext
@@ -202,33 +270,37 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand('workbench.action.chat.open', '@connext fix this code');
     });
 
-    globalThis.storedUsername = context.globalState.get<string>(globalThis.connextUsernameKey);
-    globalThis.storedPassword = context.globalState.get<string>(globalThis.connextPasswordKey);
+    globalThis.globalState.storedUsername = context.globalState.get<string>(globalThis.globalState.connextUsernameKey);
+    globalThis.globalState.storedPassword = context.globalState.get<string>(globalThis.globalState.connextPasswordKey);
 
     // Create a Copilot chat participant
     const chat = vscode.chat.createChatParticipant("connext-vc-copilot.chat", async (request, context, response, token) => {
         const userQuery = request.prompt;
 
-        if (globalThis.storedUsername === undefined || globalThis.storedPassword === undefined) {
+        if (globalThis.globalState.storedUsername === undefined || globalThis.globalState.storedPassword === undefined) {
             var success = await vscode.commands.executeCommand('connext-vc-copilot.login');
 
             if (!success) {
-                vscode.window.showInformationMessage(`Please log in to ${globalThis.connextProduct} to continue.`);
+                vscode.window.showInformationMessage(`Please log in to ${globalThis.globalState.connextProduct} to continue.`);
                 return;
             }
         }
 
-        if (globalThis.accessCode === undefined) {
+        if (globalThis.globalState.accessCode === undefined) {
+            // Get secrets
+            const filePath = vscode.Uri.joinPath(globalThis.globalState.extensionUri, 'secrets.json').fsPath;
+            const { clientId, clientSecret } = await getSecrets(filePath);
+
             // Get access token
-            const uri = globalThis.connextAuth0Url + '/oauth/token';
+            const uri = globalThis.globalState.connextAuth0Url + '/oauth/token';
             const jsonPayload = {
                 grant_type: 'password',
-                username: globalThis.storedUsername,
-                password: globalThis.storedPassword,
+                username: globalThis.globalState.storedUsername,
+                password: globalThis.globalState.storedPassword,
                 audience: 'https://chatbot.rti.com/api/v1',
                 scope: 'ask:question session:create session:delete session:update',
-                client_id: '<replace with your client_id>',
-                client_secret: '<replace with your client_secret>'
+                client_id: clientId,
+                client_secret: clientSecret
             };
             const options = {
                 method: 'POST',
@@ -241,26 +313,26 @@ export function activate(context: vscode.ExtensionContext) {
             const jsonResponse = await makeHttpRequest(uri, options)
 
             if (jsonResponse.error) {
-                vscode.window.showErrorMessage(`${globalThis.connextProduct}: Error getting access token: ${jsonResponse.error_description}`);
+                vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Error getting access token: ${jsonResponse.error_description}`);
                 return;
             }
 
-            globalThis.accessCode = jsonResponse.access_token;
+            globalThis.globalState.accessCode = jsonResponse.access_token;
         }
 
         // Send request and get response for the user query
-        const socket: Socket = io(globalThis.connextIntelligenceUrl, {
+        const socket: Socket = io(globalThis.globalState.connextIntelligenceUrl, {
             extraHeaders: {
-                authorization: `bearer ${globalThis.accessCode}`
+                authorization: `bearer ${globalThis.globalState.accessCode}`
             },
             reconnectionAttempts: 3,
         });
 
         socket.on('connect_error', (err: Error) => {
             if (err.message != "") {
-                vscode.window.showErrorMessage(`Error connecting to ${globalThis.connextProduct} Socket.IO server: ${err}`)
+                vscode.window.showErrorMessage(`Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server: ${err}`)
             } else {
-                vscode.window.showErrorMessage(`Error connecting to ${globalThis.connextProduct} Socket.IO server`)
+                vscode.window.showErrorMessage(`Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server`)
             }
         });
 
@@ -282,14 +354,14 @@ export function activate(context: vscode.ExtensionContext) {
             try {
                 parsedData = JSON.parse(data);
             } catch (error) {
-                vscode.window.showErrorMessage(`${globalThis.connextProduct}: Failed to parse response from server: ${error}`);
+                vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Failed to parse response from server: ${error}`);
                 responseReceived = true;
                 return;
             }
-        
+
             // Check if there's an error in the response
             if (parsedData.error) {
-                vscode.window.showErrorMessage(`${globalThis.connextProduct}: Error processing request in server: ${parsedData.error_description}`);
+                vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Error processing request in server: ${parsedData.error_description}`);
                 return;
             }
 
@@ -302,7 +374,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         let startTime = Date.now();
         let timeout = 10000; // 10 seconds
-        
+
         while (!connectionReady) {
             if (Date.now() - startTime > timeout) {
                 break;
@@ -311,7 +383,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         if (!connectionReady) {
-            vscode.window.showErrorMessage(`${globalThis.connextProduct}: Connection to the server failed.`);
+            vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Connection to the server failed.`);
             return;
         }
 
@@ -333,7 +405,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         if (!responseReceived) {
-            vscode.window.showErrorMessage(`${globalThis.connextProduct}: Request timed out.`);
+            vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Request timed out.`);
         }
     });
 
