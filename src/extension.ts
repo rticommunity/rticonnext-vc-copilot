@@ -26,6 +26,9 @@ class GlobalState {
     storedUsername: string | undefined;
     storedPassword: string | undefined;
 
+    socket: Socket | undefined;
+    connectionReady: boolean;
+
     constructor() {
         // Set to displayName
         this.connextProduct = "Connext for Github Copilot";
@@ -38,6 +41,9 @@ class GlobalState {
         this.storedUsername = undefined;
         this.storedPassword = undefined;
         this.extensionUri = vscode.Uri.parse(''); // Placeholder value, update when valid value is available
+
+        this.socket = undefined;
+        this.connectionReady = false;
     }
 }
 
@@ -128,6 +134,29 @@ function generateRequestId(): string {
      * Generate a request ID
      */
     return uuidv4();
+}
+
+/**
+ * Waits for a specified condition to become true within a given timeout period.
+ *
+ * @param condition - A function that returns a boolean indicating whether the condition is met.
+ * @param timeout - The maximum time to wait for the condition to be met, in milliseconds. Defaults to 10000 ms.
+ * @param checkInterval - The interval at which to check the condition, in milliseconds. Defaults to 10 ms.
+ * @returns A promise that resolves when the condition is met or the timeout is reached.
+ */
+async function waitForCondition(
+    condition: () => boolean, 
+    timeout: number = 10000, 
+    checkInterval: number = 10
+): Promise<void> {
+    const startTime = Date.now();
+
+    while (!condition()) {
+        if (Date.now() - startTime > timeout) {
+            break;
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
 }
 
 /**
@@ -320,32 +349,45 @@ export function activate(context: vscode.ExtensionContext) {
             globalThis.globalState.accessCode = jsonResponse.access_token;
         }
 
-        // Send request and get response for the user query
-        const socket: Socket = io(globalThis.globalState.connextIntelligenceUrl, {
-            extraHeaders: {
-                authorization: `bearer ${globalThis.globalState.accessCode}`
-            },
-            reconnectionAttempts: 3,
-        });
+        let socket;
 
-        socket.on('connect_error', (err: Error) => {
-            if (err.message != "") {
-                vscode.window.showErrorMessage(`Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server: ${err}`)
-            } else {
-                vscode.window.showErrorMessage(`Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server`)
+        if (globalThis.globalState.socket == undefined || !globalThis.globalState.connectionReady) {
+            globalThis.globalState.socket = io(globalThis.globalState.connextIntelligenceUrl, {
+                extraHeaders: {
+                    authorization: `bearer ${globalThis.globalState.accessCode}`
+                },
+                reconnectionAttempts: 3,
+            });
+
+            socket = globalThis.globalState.socket;
+
+            socket.on("connect", () => {
+                globalThis.globalState.connectionReady = true;
+            });
+    
+            socket.on("disconnect", () => {
+                globalThis.globalState.connectionReady = false;
+            });
+
+            socket.on('connect_error', (err: Error) => {
+                if (err.message != "") {
+                    vscode.window.showErrorMessage(`Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server: ${err}`)
+                } else {
+                    vscode.window.showErrorMessage(`Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server`)
+                }
+            });
+
+            await waitForCondition(() => globalThis.globalState.connectionReady, 10000, 10);
+    
+            if (!globalThis.globalState.connectionReady) {
+                vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Connection to the server failed.`);
+                return;
             }
-        });
-
-        let connectionReady = false;
+        } else {
+            socket = globalThis.globalState.socket;
+        }
+        
         let responseReceived = false;
-
-        socket.on("connect", () => {
-            connectionReady = true;
-        });
-
-        socket.on("disconnect", () => {
-            connectionReady = false;
-        });
 
         socket.on('response', (data: string) => {
             // Convert the data (received as a JSON string) to an object
@@ -362,6 +404,7 @@ export function activate(context: vscode.ExtensionContext) {
             // Check if there's an error in the response
             if (parsedData.error) {
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Error processing request in server: ${parsedData.error_description}`);
+                responseReceived = true;
                 return;
             }
 
@@ -372,21 +415,6 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
 
-        let startTime = Date.now();
-        let timeout = 10000; // 10 seconds
-
-        while (!connectionReady) {
-            if (Date.now() - startTime > timeout) {
-                break;
-            }
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
-
-        if (!connectionReady) {
-            vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Connection to the server failed.`);
-            return;
-        }
-
         const jsonPayload = {
             id: generateRequestId(),
             question: getPrompt(userQuery, context),
@@ -394,19 +422,13 @@ export function activate(context: vscode.ExtensionContext) {
 
         socket.emit('message', JSON.stringify(jsonPayload));
 
-        startTime = Date.now();
-        timeout = 120000; // 2 minutes
-
-        while (!responseReceived) {
-            if (Date.now() - startTime > timeout) {
-                break;
-            }
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
+        await waitForCondition(() => responseReceived, 120000, 10);
 
         if (!responseReceived) {
             vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Request timed out.`);
         }
+
+        socket.off('response');
     });
 
     chat.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images/bot_avatar.png');
