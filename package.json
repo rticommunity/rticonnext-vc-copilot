@@ -45,7 +45,8 @@
             {
                 "id": "connext-vc-copilot.chat",
                 "name": "connext",
-                "description": "Ask questions to the Connext expert"
+                "description": "Ask questions to the Connext expert",
+                "isSticky": true
             }
         ],
         "submenus": [

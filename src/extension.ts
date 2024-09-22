@@ -20,6 +20,7 @@ class GlobalState {
     readonly connextPasswordKey: string;
     readonly connextIntelligenceUrl: string;
     readonly connextAuth0Url: string;
+    readonly MAX_HISTORY_LENGTH: number;
 
     extensionUri: vscode.Uri;
     accessCode: string | undefined;
@@ -36,6 +37,7 @@ class GlobalState {
         this.connextPasswordKey = "connextPassword";
         this.connextIntelligenceUrl = "wss://sandbox-chatbot.rti.com";
         this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
+        this.MAX_HISTORY_LENGTH = 65536;
 
         this.accessCode = undefined;
         this.storedUsername = undefined;
@@ -168,26 +170,63 @@ async function waitForCondition(
  */
 function getPrompt(prompt: string, context: vscode.ChatContext): string {
     let previousMessages = context.history;
-    let strContext = "";
     const editor = vscode.window.activeTextEditor;
+    
+    // Limit the number of previous messages to the maximum history length
+    let limit = globalThis.globalState.MAX_HISTORY_LENGTH;
 
-    for (let i = 0; i < previousMessages.length; i++) {
+    if (editor) {
+        const selection = editor.selection;
+        const text = editor.document.getText(selection);
+        limit = globalThis.globalState.MAX_HISTORY_LENGTH - text.length;
+
+        if (limit < 0) {
+            limit = 0;
+        }
+    }
+
+    let previousMessagesList = [];
+
+    for (let i = previousMessages.length-1, userAsk = false, totalLength = 0; i >= 0; i--) {
         if (previousMessages[i] instanceof vscode.ChatRequestTurn) {
             const turn = previousMessages[i] as vscode.ChatRequestTurn;
-            strContext += `User ask: [[${turn.prompt}]]\n`
+            previousMessagesList.unshift(`User ask: ${turn.prompt}\n`);
+            totalLength += turn.prompt.length;
+            userAsk = true;
         } else if (previousMessages[i] instanceof vscode.ChatResponseTurn) {
             const turn = previousMessages[i] as vscode.ChatResponseTurn;
+            let response = `Bot response: `;
 
-            strContext += `Bot response: [[\n`
             for (let i = 0; i < turn.response.length; i++) {
                 const responsePart = turn.response[i].value;
 
                 if (responsePart instanceof vscode.MarkdownString) {
-                    strContext += `${responsePart.value}\n`
+                    response += `${responsePart.value}\n`
                 }
             }
-            strContext += `]]\n`
+
+            previousMessagesList.unshift(response);
+            totalLength += response.length;
+            userAsk = false;
         }
+
+        if (totalLength > limit && userAsk) {
+            // Pop the last user ask
+            previousMessagesList.shift();
+
+            if (previousMessagesList.length > 0) {
+                // Pop the last bot response
+                previousMessagesList.shift();
+            }
+
+            break;
+        }
+    }
+
+    let strContext = "";
+
+    for (let i = 0; i < previousMessagesList.length; i++) {
+        strContext += previousMessagesList[i];
     }
 
     if (editor) {
