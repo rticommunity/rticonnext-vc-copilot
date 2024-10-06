@@ -22,6 +22,7 @@ class GlobalState {
     readonly connextAuth0Url: string;
     readonly MAX_HISTORY_LENGTH: number;
     readonly NUM_FOLLOWUPS: number;
+    readonly VALIDATE_CODE_PROMPT_PREFIX: string;
 
     extensionUri: vscode.Uri;
     accessCode: string | undefined;
@@ -42,6 +43,7 @@ class GlobalState {
         this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
         this.MAX_HISTORY_LENGTH = 65536;
         this.NUM_FOLLOWUPS = 3;
+        this.VALIDATE_CODE_PROMPT_PREFIX = "Validate previous";
 
         this.accessCode = undefined;
         this.storedUsername = undefined;
@@ -538,7 +540,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Validate code command
     vscode.commands.registerCommand('connext-vc-copilot.validate-code', (languages: string) => {
-        const VALIDATE_CODE_PROMPT = "Validate previous " + languages + " code and provide the updated code"
+        const VALIDATE_CODE_PROMPT = globalState.VALIDATE_CODE_PROMPT_PREFIX + " " + languages + " code and provide the updated code"
         vscode.commands.executeCommand('workbench.action.chat.open', `@connext ${VALIDATE_CODE_PROMPT}`);
     });
     
@@ -672,9 +674,10 @@ export function activate(context: vscode.ExtensionContext) {
         if (!responseReceived) {
             vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Request timed out.`);
         } else {
+            let validationPrompt = globalState.lastPrompt.includes(globalState.VALIDATE_CODE_PROMPT_PREFIX);
             let languages = await getCodeContentInfo(globalState.lastResponse, token);
 
-            if (languages.size != 0) {
+            if (languages.size != 0 && !validationPrompt) {
                 let languagesString = Array.from(languages).join(", ");
 
                 response.markdown(`\n\n*Click 'Validate Code' to check the XML or Python for errors. The chatbot will try to fix issues with the XML schema, or Python syntax or types. Validation may take up to a minute.*`);
@@ -684,6 +687,10 @@ export function activate(context: vscode.ExtensionContext) {
                     title: vscode.l10n.t('Validate code'),
                     arguments: [languagesString]
                 });
+            }
+
+            if (validationPrompt) {
+                response.markdown(`\n\n***NOTE:** Although the code has been validated, it may still contain errors. Please review and test the code before using it.*`);
             }
         }
 
