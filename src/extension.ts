@@ -323,8 +323,6 @@ async function askQuestion(question: string, token: vscode.CancellationToken): P
  * ```
  */
 async function generateFollowUps(num_followups: number, conversation: string, token: vscode.CancellationToken): Promise<vscode.ChatFollowup[]> {
-    const MODEL_SELECTOR: vscode.LanguageModelChatSelector = { vendor: 'copilot', family: 'gpt-4o' };
-
     const QUESTION = `
     You are an RTI Connext chatbot tasked with generating potential follow-up 
     questions that the RTI Connext developer might want to ask you during an 
