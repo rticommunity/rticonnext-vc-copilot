@@ -274,6 +274,52 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
     return strContext;
 }
 
+/**
+ * Asks a question to a language model and returns the response.
+ *
+ * @param question - The question to ask the language model.
+ * @param token - A cancellation token to cancel the request if needed.
+ * @returns A promise that resolves to the response from the language model.
+ */
+async function askQuestion(question: string, token: vscode.CancellationToken): Promise<string> {
+    const MODEL_SELECTOR: vscode.LanguageModelChatSelector = { vendor: 'copilot', family: 'gpt-4o' };
+
+    const [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
+
+    const messages = [
+        vscode.LanguageModelChatMessage.User(question)
+    ];
+
+    let response = "";
+
+    const chatResponse = await model.sendRequest(messages, {}, token);
+    for await (const fragment of chatResponse.text) {
+        response += fragment;
+    }
+
+    return response;
+}
+
+/**
+ * Generates potential follow-up questions for an RTI Connext developer based on the context of an ongoing conversation.
+ * 
+ * @param num_followups - The number of follow-up questions to generate.
+ * @param conversation - The full context of the ongoing conversation.
+ * @param token - A cancellation token to signal the operation should be canceled.
+ * @returns A promise that resolves to an array of follow-up questions, each containing a prompt and a concise summary.
+ * 
+ * @example
+ * ```typescript
+ * const followUps = await generateFollowUps(3, "How do I configure QoS settings?", token);
+ * console.log(followUps);
+ * // Output:
+ * // [
+ * //   { prompt: "What are the default QoS settings?", label: "Default QoS settings" },
+ * //   { prompt: "How can I customize QoS?", label: "Customizing QoS" },
+ * //   { prompt: "What is the impact of QoS?", label: "Impact of QoS" }
+ * // ]
+ * ```
+ */
 async function generateFollowUps(num_followups: number, conversation: string, token: vscode.CancellationToken): Promise<vscode.ChatFollowup[]> {
     const MODEL_SELECTOR: vscode.LanguageModelChatSelector = { vendor: 'copilot', family: 'gpt-4o' };
 
@@ -311,23 +357,12 @@ async function generateFollowUps(num_followups: number, conversation: string, to
     conversation END
     `;
 
-    const [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
-
-    const messages = [
-        vscode.LanguageModelChatMessage.User(QUESTION)
-    ];
-
-    let response = "";
-
-    const chatResponse = await model.sendRequest(messages, {}, token);
-    for await (const fragment of chatResponse.text) {
-        response += fragment;
-    }
-
-    let parsedData;
+    let response = await askQuestion(QUESTION, token);
 
     response = response.replace('```json', '');
     response = response.replace('```', '');
+
+    let parsedData;
 
     try {
         parsedData = JSON.parse(response);
@@ -346,6 +381,69 @@ async function generateFollowUps(num_followups: number, conversation: string, to
     }
 
     return followups;
+}
+
+/**
+ * Analyzes the provided response to determine the types of source code content present.
+ * 
+ * @param response - The response string to analyze for source code content.
+ * @param token - A VS Code cancellation token to handle operation cancellation.
+ * @returns A promise that resolves to a set of strings representing the detected programming languages.
+ * 
+ * The function checks for the presence of specific language code blocks (e.g., Python, XML) within the response.
+ * It uses a predefined list of languages and searches for corresponding code block markers (e.g., ```python).
+ * If such markers are found, the respective language is added to the result set.
+ * 
+ * Additionally, the function formulates a question to further analyze the response content using an external
+ * question-answering service. The expected output from this service is in JSON format, specifying the detected
+ * content types. The function parses this JSON output and adds any valid content types to the result set.
+ * 
+ * If the JSON parsing fails, the function returns the initially detected languages.
+ */
+async function getCodeContentInfo(response: string, token: vscode.CancellationToken): Promise<Set<string>> {
+    const languages = ["python", "xml"];
+
+    let languagesInResponse = new Set<string>();
+
+    for (let language of languages) {
+        if (response.includes('```' + language)) {
+            languagesInResponse.add(language);
+        }
+    }
+
+    const QUESTION = `
+    Determine the source code content in the following response:
+    <<BEGIN>>
+    ${response}
+    <<END>>
+
+    The output should be in JSON format as follows:
+    {
+        "code_content": ["content-type", "content-type"]
+    }
+
+    Where each content-type can be any of the following: ${languages.join(", ")}
+    `;
+
+    let sourceCode = await askQuestion(QUESTION, token);
+
+    let parsedData;
+
+    try {
+        parsedData = JSON.parse(sourceCode);
+    } catch (error) {
+        return languagesInResponse;
+    }
+
+    for (let content of parsedData.code_content) {
+        content = content.toLowerCase();
+
+        if (languages.includes(content)) {
+            languagesInResponse.add(content);
+        }
+    }
+
+    return languagesInResponse;
 }
 
 /**
@@ -438,6 +536,12 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand('workbench.action.chat.open', '@connext fix this code');
     });
 
+    // Validate code command
+    vscode.commands.registerCommand('connext-vc-copilot.validate-code', (languages: string) => {
+        const VALIDATE_CODE_PROMPT = "Validate previous " + languages + " code and provide the updated code"
+        vscode.commands.executeCommand('workbench.action.chat.open', `@connext ${VALIDATE_CODE_PROMPT}`);
+    });
+    
     globalThis.globalState.storedUsername = context.globalState.get<string>(globalThis.globalState.connextUsernameKey);
     globalThis.globalState.storedPassword = context.globalState.get<string>(globalThis.globalState.connextPasswordKey);
 
@@ -567,6 +671,18 @@ export function activate(context: vscode.ExtensionContext) {
 
         if (!responseReceived) {
             vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Request timed out.`);
+        } else {
+            let languages = await getCodeContentInfo(globalState.lastResponse, token);
+
+            if (languages.size != 0) {
+                let languagesString = Array.from(languages).join(", ");
+
+                response.button({
+                    command: 'connext-vc-copilot.validate-code',
+                    title: vscode.l10n.t('Validate code'),
+                    arguments: [languagesString]
+                });
+            }
         }
 
         socket.off('response');

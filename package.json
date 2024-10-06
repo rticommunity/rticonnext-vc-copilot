@@ -39,6 +39,10 @@
                 "command": "connext-vc-copilot.fix",
                 "title": "Connext: Fix this",
                 "shortTitle": "Fix this"
+            },
+            {
+                "command": "connext-vc-copilot.validate-code",
+                "title": "Connext: Validate code"
             }
         ],
         "chatParticipants": [
