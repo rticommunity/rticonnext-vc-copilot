@@ -677,6 +677,8 @@ export function activate(context: vscode.ExtensionContext) {
             if (languages.size != 0) {
                 let languagesString = Array.from(languages).join(", ");
 
+                response.markdown(`\n\n*Click 'Validate Code' to check the XML or Python for errors. The chatbot will try to fix issues with the XML schema, or Python syntax or types. Validation may take up to a minute.*`);
+
                 response.button({
                     command: 'connext-vc-copilot.validate-code',
                     title: vscode.l10n.t('Validate code'),
