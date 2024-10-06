@@ -21,11 +21,14 @@ class GlobalState {
     readonly connextIntelligenceUrl: string;
     readonly connextAuth0Url: string;
     readonly MAX_HISTORY_LENGTH: number;
+    readonly NUM_FOLLOWUPS: number;
 
     extensionUri: vscode.Uri;
     accessCode: string | undefined;
     storedUsername: string | undefined;
     storedPassword: string | undefined;
+    lastPrompt: string | null;
+    lastResponse: string | null;
 
     socket: Socket | undefined;
     connectionReady: boolean;
@@ -38,6 +41,7 @@ class GlobalState {
         this.connextIntelligenceUrl = "wss://sandbox-chatbot.rti.com";
         this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
         this.MAX_HISTORY_LENGTH = 65536;
+        this.NUM_FOLLOWUPS = 3;
 
         this.accessCode = undefined;
         this.storedUsername = undefined;
@@ -46,6 +50,9 @@ class GlobalState {
 
         this.socket = undefined;
         this.connectionReady = false;
+
+        this.lastPrompt = null
+        this.lastResponse = null
     }
 }
 
@@ -58,6 +65,12 @@ globalThis.globalState = new GlobalState();
 interface Secrets {
     clientId: string;
     clientSecret: string;
+}
+
+interface IChatResult extends vscode.ChatResult {
+    metadata: {
+        command: string;
+    }
 }
 
 /**
@@ -147,8 +160,8 @@ function generateRequestId(): string {
  * @returns A promise that resolves when the condition is met or the timeout is reached.
  */
 async function waitForCondition(
-    condition: () => boolean, 
-    timeout: number = 10000, 
+    condition: () => boolean,
+    timeout: number = 10000,
     checkInterval: number = 10
 ): Promise<void> {
     const startTime = Date.now();
@@ -164,14 +177,19 @@ async function waitForCondition(
 /**
  * Retrieves the prompt for the user including chat history.
  * 
- * @param prompt - The prompt to be retrieved.
+ * If response is null, the prompt is returned with the chat history.
+ * If response is not null, the prompt is returned with the chat history and 
+ * the response for the prompt.
+ * 
+ * @param prompt - The prompt.
+ * @param response - The response.
  * @param context - The chat context containing the history of previous messages.
- * @returns The prompt with the chat history.
+ * @returns The chat history with the prompt and response.
  */
-function getPrompt(prompt: string, context: vscode.ChatContext): string {
+function getPrompt(prompt: string | null, response: string | null, context: vscode.ChatContext): string {
     let previousMessages = context.history;
     const editor = vscode.window.activeTextEditor;
-    
+
     // Limit the number of previous messages to the maximum history length
     let limit = globalThis.globalState.MAX_HISTORY_LENGTH;
 
@@ -187,7 +205,7 @@ function getPrompt(prompt: string, context: vscode.ChatContext): string {
 
     let previousMessagesList = [];
 
-    for (let i = previousMessages.length-1, userAsk = false, totalLength = 0; i >= 0; i--) {
+    for (let i = previousMessages.length - 1, userAsk = false, totalLength = 0; i >= 0; i--) {
         if (previousMessages[i] instanceof vscode.ChatRequestTurn) {
             const turn = previousMessages[i] as vscode.ChatRequestTurn;
             previousMessagesList.unshift(`User ask: ${turn.prompt}\n`);
@@ -229,7 +247,11 @@ function getPrompt(prompt: string, context: vscode.ChatContext): string {
         strContext += previousMessagesList[i];
     }
 
-    if (editor) {
+    if (prompt === null) {
+        return strContext;
+    }
+
+    if (editor && response == null) {
         const selection = editor.selection;
         const text = editor.document.getText(selection);
         if (text) {
@@ -243,9 +265,87 @@ function getPrompt(prompt: string, context: vscode.ChatContext): string {
         }
     } else {
         strContext += `User ask: ${prompt}\n`
+
+        if (response !== null) {
+            strContext += `Bot response: ${response}\n`
+        }
     }
 
     return strContext;
+}
+
+async function generateFollowUps(num_followups: number, conversation: string, token: vscode.CancellationToken): Promise<vscode.ChatFollowup[]> {
+    const MODEL_SELECTOR: vscode.LanguageModelChatSelector = { vendor: 'copilot', family: 'gpt-4o' };
+
+    const QUESTION = `
+    You are an RTI Connext chatbot tasked with generating potential follow-up 
+    questions that the RTI Connext developer might want to ask you during an 
+    ongoing conversation.
+    
+    The developer may be new to RTI Connext or have limited experience with the 
+    technology. They are seeking guidance on how to advance their project or 
+    resolve specific issues.
+    
+    Your goal is to generate ${num_followups} concise and relevant follow-up 
+    questions that the developer could ask you, based on the full context of 
+    the conversation. These questions should help keep the developer engaged 
+    and guide them towards useful solutions.
+    
+    Output the questions in valid JSON format, structured as follows:
+    
+    {
+        "questions": [
+            {
+            "question": "Developer's potential follow-up question here",
+            "summary": "Concise 7-word summary of the question"
+            },
+            {
+            "question": "Developer's potential follow-up question here",
+            "summary": "Concise 7-word summary of the question"
+            }
+        ]
+    }
+    
+    conversation START:
+    ${conversation}
+    conversation END
+    `;
+
+    const [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
+
+    const messages = [
+        vscode.LanguageModelChatMessage.User(QUESTION)
+    ];
+
+    let response = "";
+
+    const chatResponse = await model.sendRequest(messages, {}, token);
+    for await (const fragment of chatResponse.text) {
+        response += fragment;
+    }
+
+    let parsedData;
+
+    response = response.replace('```json', '');
+    response = response.replace('```', '');
+
+    try {
+        parsedData = JSON.parse(response);
+    } catch (error) {
+        /* Any error leads to an empty followup */
+        return [];
+    }
+
+    let followups = [];
+
+    for (let i = 0; i < parsedData.questions.length; i++) {
+        followups.push({
+            prompt: parsedData.questions[i].question,
+            label: parsedData.questions[i].summary,
+        });
+    }
+
+    return followups;
 }
 
 /**
@@ -343,7 +443,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Create a Copilot chat participant
     const chat = vscode.chat.createChatParticipant("connext-vc-copilot.chat", async (request, context, response, token) => {
-        const userQuery = request.prompt;
+        globalState.lastPrompt = request.prompt;
 
         if (globalThis.globalState.storedUsername === undefined || globalThis.globalState.storedPassword === undefined) {
             var success = await vscode.commands.executeCommand('connext-vc-copilot.login');
@@ -389,6 +489,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         let socket;
+        globalState.lastResponse = "";
 
         if (globalThis.globalState.socket == undefined || !globalThis.globalState.connectionReady) {
             globalThis.globalState.socket = io(globalThis.globalState.connextIntelligenceUrl, {
@@ -403,7 +504,7 @@ export function activate(context: vscode.ExtensionContext) {
             socket.on("connect", () => {
                 globalThis.globalState.connectionReady = true;
             });
-    
+
             socket.on("disconnect", () => {
                 globalThis.globalState.connectionReady = false;
             });
@@ -417,7 +518,7 @@ export function activate(context: vscode.ExtensionContext) {
             });
 
             await waitForCondition(() => globalThis.globalState.connectionReady, 10000, 10);
-    
+
             if (!globalThis.globalState.connectionReady) {
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Connection to the server failed.`);
                 return;
@@ -425,7 +526,7 @@ export function activate(context: vscode.ExtensionContext) {
         } else {
             socket = globalThis.globalState.socket;
         }
-        
+
         let responseReceived = false;
 
         socket.on('response', (data: string) => {
@@ -450,13 +551,14 @@ export function activate(context: vscode.ExtensionContext) {
             if (parsedData.last_token && parsedData.last_token === true) {
                 responseReceived = true;
             } else {
+                globalState.lastResponse += parsedData.token;
                 response.markdown(parsedData.token);
             }
         });
 
         const jsonPayload = {
             id: generateRequestId(),
-            question: getPrompt(userQuery, context),
+            question: getPrompt(globalState.lastPrompt, null, context),
         };
 
         socket.emit('message', JSON.stringify(jsonPayload));
@@ -469,6 +571,13 @@ export function activate(context: vscode.ExtensionContext) {
 
         socket.off('response');
     });
+
+    chat.followupProvider = {
+        async provideFollowups(
+            result: IChatResult, context: vscode.ChatContext, token: vscode.CancellationToken) {
+            return await generateFollowUps(globalState.NUM_FOLLOWUPS, getPrompt(globalState.lastPrompt, globalState.lastResponse, context), token);
+        }
+    };
 
     chat.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images/bot_avatar.png');
 }
