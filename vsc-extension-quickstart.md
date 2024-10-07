@@ -29,6 +29,14 @@ dependencies.
 
 * You can open the full set of our API when you open the file `node_modules/@types/vscode/index.d.ts`.
 
+## Build VSIX package
+
+* Run the following command line to build the vsix package:
+
+```bash
+vsce package
+```
+
 ## Run tests
 
 * Install the [Extension Test Runner](https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner)
