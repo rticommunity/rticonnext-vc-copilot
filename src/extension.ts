@@ -523,23 +523,28 @@ async function getCodeContentInfo(response: string, token: vscode.CancellationTo
 }
 
 /**
- * Determines if a given prompt is related to the application_name.
+ * Determines if a given prompt refers to any of the specified applications.
  *
- * @param application_name - The name of the application to be evaluated.
- * @param prompt - The prompt string to be evaluated.
- * @param token - A VS Code cancellation token to handle cancellation.
- * @returns A promise that resolves to a boolean indicating whether the prompt is related to the application_name.
+ * @param application_names - An array of application names to check against the prompt.
+ * @param prompt - The prompt to analyze.
+ * @param token - A VS Code cancellation token to handle cancellation requests.
+ * @returns A promise that resolves to the name of the related application if found, otherwise null.
+ *
+ * The function sends a formatted question to an external service to determine if the prompt
+ * refers to any of the provided application names. The response is expected in JSON format.
+ * If the response is valid JSON and contains an application name, that name is returned.
+ * If the response is invalid or does not contain an application name, null is returned.
  */
-async function isPromptRelatedToApplication(application_name: string, prompt: string, token: vscode.CancellationToken): Promise<boolean> {
+async function getRelatedApplication(application_names: string[], prompt: string, token: vscode.CancellationToken): Promise<string | null> {
     const QUESTION = `
-    Determine if the following prompt refers to the ${application_name} application:
+    Determine if the following prompt refers to any of the following applications: ${application_names.join(", ")}.
     <<BEGIN>>
     ${prompt}
     <<END>>
 
     The output should be in JSON format as follows:
     {
-        "result": true|false
+        "application": "application_name" | null
     }
     `;
 
@@ -552,9 +557,9 @@ async function isPromptRelatedToApplication(application_name: string, prompt: st
 
     try {
         parsedData = JSON.parse(applicationResponse);
-        return parsedData.result;
+        return parsedData.application;
     } catch (error) {
-        return false;
+        return null;
     }
 }
 
@@ -863,38 +868,34 @@ export function activate(context: vscode.ExtensionContext) {
                 });
             }
 
-            if (await isPromptRelatedToApplication("RTI Admin Console", globalState.lastPrompt, token)) {
-                response.markdown(`\n\n*Click 'Run Admin Console' to open the RTI Admin Console from Visual Code.*`);
-                
-                response.button({
-                    command: 'connext-vc-copilot.run-admin-console',
-                    title: vscode.l10n.t('Run Admin Console'),
-                    arguments: []
-                });
-            } else if (await isPromptRelatedToApplication("RTI System Designer", globalState.lastPrompt, token)) {
-                response.markdown(`\n\n*Click 'Run System Designer' to open the RTI System Designer from Visual Code.*`);
+            let relatedApplication = await getRelatedApplication(["RTI Admin Console", "RTI System Designer", "RTI Monitor", "RTI Shapes Demo"], globalState.lastPrompt, token);
 
-                response.button({
-                    command: 'connext-vc-copilot.run-system-designer',
-                    title: vscode.l10n.t('Run System Designer'),
-                    arguments: []
-                });
-            } else if (await isPromptRelatedToApplication("RTI Monitor", globalState.lastPrompt, token)) {
-                response.markdown(`\n\n*Click 'Run Monitor' to open the RTI Monitor from Visual Code.*`);
-
-                response.button({
-                    command: 'connext-vc-copilot.run-monitor-ui',
-                    title: vscode.l10n.t('Run Monitor'),
-                    arguments: []
-                });
-            } else if (await isPromptRelatedToApplication("RTI Shapes Demo", globalState.lastPrompt, token)) {
-                response.markdown(`\n\n*Click 'Run Shapes Demo' to open the RTI Shapes Demo from Visual Code.*`);
-
-                response.button({
-                    command: 'connext-vc-copilot.run-shapes-demo',
-                    title: vscode.l10n.t('Run Shapes Demo'),
-                    arguments: []
-                });
+            if (relatedApplication != null) {
+                if (relatedApplication == "RTI Admin Console") {
+                    response.button({
+                        command: 'connext-vc-copilot.start-admin-console',
+                        title: vscode.l10n.t('Start Admin Console'),
+                        arguments: []
+                    });
+                } else if (relatedApplication == "RTI System Designer") {
+                    response.button({
+                        command: 'connext-vc-copilot.start-system-designer',
+                        title: vscode.l10n.t('Start System Designer'),
+                        arguments: []
+                    });
+                } else if (relatedApplication == "RTI Monitor") {
+                    response.button({
+                        command: 'connext-vc-copilot.start-monitor-ui',
+                        title: vscode.l10n.t('Start Monitor'),
+                        arguments: []
+                    });
+                } else {
+                    response.button({
+                        command: 'connext-vc-copilot.start-shapes-demo',
+                        title: vscode.l10n.t('Start Shapes Demo'),
+                        arguments: []
+                    });
+                }
             }
 
             if (validationPrompt) {
