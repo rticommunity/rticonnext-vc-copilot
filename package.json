@@ -43,6 +43,22 @@
             {
                 "command": "connext-vc-copilot.validate-code",
                 "title": "Connext: Validate code"
+            },
+            {
+                "command": "connext-vc-copilot.run-admin-console",
+                "title": "Connext: Run RTI Admin Console"
+            },
+            {
+                "command": "connext-vc-copilot.run-system-designer",
+                "title": "Connext: Run RTI System Designer"
+            },
+            {
+                "command": "connext-vc-copilot.run-monitor-ui",
+                "title": "Connext: Run RTI Monitor"
+            },
+            {
+                "command": "connext-vc-copilot.run-shapes-demo",
+                "title": "Connext: Run RTI Shapes Demo"
             }
         ],
         "chatParticipants": [
@@ -50,7 +66,25 @@
                 "id": "connext-vc-copilot.chat",
                 "name": "connext",
                 "description": "Ask questions to the Connext expert",
-                "isSticky": true
+                "isSticky": true,
+                "commands": [
+                    {
+                        "name": "start-admin-console",
+                        "description": "Start RTI Admin Console"
+                    },
+                    {
+                        "name": "start-system-designer",
+                        "description": "Start RTI System Designer"
+                    },
+                    {
+                        "name": "start-monitor-ui",
+                        "description": "Start RTI Monitor"
+                    },
+                    {
+                        "name": "start-shapes-demo",
+                        "description": "Start RTI Shapes Demo"
+                    }
+                ]
             }
         ],
         "submenus": [
