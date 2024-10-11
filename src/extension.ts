@@ -908,7 +908,11 @@ export function activate(context: vscode.ExtensionContext) {
     chat.followupProvider = {
         async provideFollowups(
             result: IChatResult, context: vscode.ChatContext, token: vscode.CancellationToken) {
-            if (result.metadata.command != 'start-admin-console') {
+            if (result.metadata == undefined
+                || (result.metadata.command != 'start-admin-console'
+                && result.metadata.command != 'start-system-designer'
+                && result.metadata.command != 'start-monitor-ui'
+                && result.metadata.command != 'start-shapes-demo')) {
                 return await generateFollowUps(globalState.NUM_FOLLOWUPS, getPrompt(globalState.lastPrompt, globalState.lastResponse, context), token);
             }
         }
