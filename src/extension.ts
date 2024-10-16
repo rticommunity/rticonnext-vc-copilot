@@ -537,7 +537,7 @@ async function getCodeContentInfo(response: string, token: vscode.CancellationTo
  */
 async function getRelatedApplication(application_names: string[], prompt: string, token: vscode.CancellationToken): Promise<string | null> {
     const QUESTION = `
-    Determine if the following prompt refers to any of the following applications: ${application_names.join(", ")}.
+    Determine if the following prompt explicitly refers to any of the following applications: ${application_names.join(", ")}.
     <<BEGIN>>
     ${prompt}
     <<END>>
