@@ -26,6 +26,8 @@ class GlobalState {
     readonly MAX_HISTORY_LENGTH: number;
     readonly NUM_FOLLOWUPS: number;
     readonly VALIDATE_CODE_PROMPT_PREFIX: string;
+    readonly VALIDATE_CODE_HELP_STRING: string;
+    readonly VALIDATE_CODE_WARNING: string;
 
     extensionUri: vscode.Uri;
     accessCode: string | undefined;
@@ -47,7 +49,9 @@ class GlobalState {
         this.MAX_HISTORY_LENGTH = 65536;
         this.NUM_FOLLOWUPS = 3;
         this.VALIDATE_CODE_PROMPT_PREFIX = "Validate previous";
-
+        this.VALIDATE_CODE_HELP_STRING = `\n\n*Click 'Validate Code' to check the XML or Python for errors. The chatbot will try to fix issues with the XML schema, or Python syntax or types. Validation may take up to a minute.*`;
+        this.VALIDATE_CODE_WARNING = `\n\n***NOTE:** Although the code has been validated, it may still contain errors. Please review and test the code before using it.*`;
+    
         this.accessCode = undefined;
         this.storedUsername = undefined;
         this.storedPassword = undefined;
@@ -222,9 +226,16 @@ function getVisibleWorkspaceFiles(): string[] {
  * @param context - The chat context containing the history of previous messages.
  * @returns The chat history with the prompt and response.
  */
-function getPrompt(prompt: string | null, response: string | null, context: vscode.ChatContext): string {
+function getPrompt(prompt: string | null, response: string | null, context: vscode.ChatContext, rest_api: boolean = true): string {
     let previousMessages = context.history;
     const editor = vscode.window.activeTextEditor;
+
+    const BeginHumanRestMessage = "[[BEGIN Human message]]\n";
+    const EndHumanRestMessage = "[[END Human message]]\n";
+    const BeginAiRestMessage = "[[BEGIN AI message]]\n";
+    const EndAiRestMessage = "[[END AI message]]\n";
+    const HumanMessage = "Human message:";
+    const AiMessage = "AI message:";
 
     // Limit the number of previous messages to the maximum history length
     let limit = globalThis.globalState.MAX_HISTORY_LENGTH;
@@ -244,12 +255,28 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
     for (let i = previousMessages.length - 1, userAsk = false, totalLength = 0; i >= 0; i--) {
         if (previousMessages[i] instanceof vscode.ChatRequestTurn) {
             const turn = previousMessages[i] as vscode.ChatRequestTurn;
-            previousMessagesList.unshift(`User ask: ${turn.prompt}\n`);
+
+            let request = "";
+            if (rest_api) {
+                request += BeginHumanRestMessage;
+                request += `${turn.prompt}\n`;
+                request += EndHumanRestMessage;
+            } else {
+                request += `${HumanMessage} ${turn.prompt}\n`;
+            }
+
+            previousMessagesList.unshift(request);
             totalLength += turn.prompt.length;
             userAsk = true;
         } else if (previousMessages[i] instanceof vscode.ChatResponseTurn) {
             const turn = previousMessages[i] as vscode.ChatResponseTurn;
-            let response = `Bot response: `;
+            let response = "";
+
+            if (rest_api) {
+                response += BeginAiRestMessage
+            } else {
+                response += `${AiMessage} `
+            }
 
             for (let i = 0; i < turn.response.length; i++) {
                 const responsePart = turn.response[i].value;
@@ -257,6 +284,18 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
                 if (responsePart instanceof vscode.MarkdownString) {
                     response += `${responsePart.value}\n`
                 }
+            }
+
+            if (rest_api) {
+                response += EndAiRestMessage
+            }
+
+            if (response.includes(globalThis.globalState.VALIDATE_CODE_HELP_STRING)) {
+                response = response.replace(globalThis.globalState.VALIDATE_CODE_HELP_STRING, "");
+            }
+
+            if (response.includes(globalThis.globalState.VALIDATE_CODE_WARNING)) {
+                response = response.replace(globalThis.globalState.VALIDATE_CODE_WARNING, "");
             }
 
             previousMessagesList.unshift(response);
@@ -290,11 +329,18 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
 
     let filesContext: string | null = null;
     let enabled = false;
-    
+
     // Feature disable for now
     if (enabled && visibleFiles.length > 0) {
         // Initialize the context with a description of the workspace files
-        filesContext = `Important: You have access to the following files in the workspace that you can use to formulate an answer to the user question:\n`;
+
+        if (rest_api) {
+            filesContext = BeginHumanRestMessage;
+        } else {
+            filesContext = `${HumanMessage} `;
+        }
+
+        filesContext = `Important: You have access to the following files in the workspace that you can use to formulate an answer to the human request:\n`;
 
         // Append each file name to the context
         visibleFiles.forEach(file => {
@@ -306,33 +352,58 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
         filesContext += `User question: "Compile the IDL and generate C++ code."\n`;
         filesContext += `Workspace file: "SensorData.idl"\n`;
         filesContext += `Expected response: "rtiddsgen ... SensorData.idl"\n`;
+
+        if (rest_api) {
+            filesContext += EndHumanRestMessage;
+        }
     }
 
     if (editor && response == null) {
         const selection = editor.selection;
         const text = editor.document.getText(selection);
-        if (text) {
-            strContext += `User ask: Given the following text selection answer a question\n`
-            strContext += `Text selection begin {{\n`
-            strContext += `${text}\n`
-            strContext += `}} Text selection end\n`
-            strContext += `Question: ${prompt}\n`
+
+        if (rest_api) {
+            strContext += BeginHumanRestMessage;
         } else {
-            strContext += `User ask: ${prompt}\n`
+            strContext += `${HumanMessage} `;
+        }
+
+        if (text) {
+            strContext += `Given the following text selection, respond to the follow-up request:\n\n`;
+            strContext += `Text selection:\n{{\n${text}\n}}\n`;
+            strContext += `Request: ${prompt}\n`;
+        } else {
+            strContext += `${prompt}\n`;
         }
 
         if (filesContext != null) {
             strContext += filesContext;
         }
     } else {
-        strContext += `User ask: ${prompt}\n`
+        if (rest_api) {
+            strContext += BeginHumanRestMessage;
+        } else {
+            strContext += `${HumanMessage} `;
+        }
+
+        strContext += `${prompt}\n`;
+
+        if (rest_api) {
+            strContext += EndHumanRestMessage;
+        }
 
         if (filesContext != null) {
             strContext += filesContext;
         }
 
         if (response !== null) {
-            strContext += `Bot response: ${response}\n`
+            if (rest_api) {
+                strContext += BeginAiRestMessage;
+            } else {
+                strContext += `${AiMessage} `;
+            }
+
+            strContext += `${response}\n`
         }
     }
 
@@ -692,7 +763,7 @@ function findRTIConnextDDSDirectory(): string[] | undefined {
     if (process.env.NDDSHOME) {
         return [process.env.NDDSHOME];
     }
-    
+
     if (process.platform === 'linux') {
         parentDir = process.env.HOME || process.env.USERPROFILE;
     } else if (process.platform === 'darwin') {
@@ -756,7 +827,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
 
     for (let dir of installationDirectories) {
         let architectures = findArchitecture(installationDirectories[0]);
-    
+
         response.markdown(`### Installation ${count}:\n`);
         response.markdown(`*Directory:* \`\`\`${dir}\`\`\`\n`);
 
@@ -775,7 +846,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
             }
 
             let shell = 'bash';
-            
+
             if (shellCmd.endsWith('zsh')) {
                 shell = 'zsh';
             } else if (shellCmd.endsWith('tcsh')) {
@@ -989,7 +1060,7 @@ export function activate(context: vscode.ExtensionContext) {
             return
         }
 
-        //let botFollowup = await generateBotFollowUp(getPrompt(globalState.lastPrompt, null, context), token);
+        //let botFollowup = await generateBotFollowUp(getPrompt(globalState.lastPrompt, null, context, false), token);
 
         //if (botFollowup != null) {
         //    response.markdown(botFollowup);
@@ -1066,7 +1137,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         const jsonPayload = {
             id: generateRequestId(),
-            question: getPrompt(globalState.lastPrompt, null, context),
+            question: getPrompt(globalState.lastPrompt, null, context, true),
         };
 
         socket.emit('message', JSON.stringify(jsonPayload));
@@ -1082,7 +1153,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (languages.size != 0 && !validationPrompt) {
                 let languagesString = Array.from(languages).join(", ");
 
-                response.markdown(`\n\n*Click 'Validate Code' to check the XML or Python for errors. The chatbot will try to fix issues with the XML schema, or Python syntax or types. Validation may take up to a minute.*`);
+                response.markdown(globalState.VALIDATE_CODE_HELP_STRING);
 
                 response.button({
                     command: 'connext-vc-copilot.validate-code',
@@ -1137,7 +1208,7 @@ export function activate(context: vscode.ExtensionContext) {
                     && result.metadata.command != 'startSystemDesigner'
                     && result.metadata.command != 'startMonitorUI'
                     && result.metadata.command != 'startShapesDemo')) {
-                return await generateFollowUps(globalState.NUM_FOLLOWUPS, getPrompt(globalState.lastPrompt, globalState.lastResponse, context), token);
+                return await generateFollowUps(globalState.NUM_FOLLOWUPS, getPrompt(globalState.lastPrompt, globalState.lastResponse, context, false), token);
             }
         }
     };
