@@ -14,6 +14,8 @@ import { Socket } from "socket.io-client";
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { exec } from 'child_process';
+import * as path from 'path';
+import { Script } from 'vm';
 
 class GlobalState {
     readonly connextProduct: string;
@@ -178,6 +180,37 @@ async function waitForCondition(
 }
 
 /**
+ * Retrieves the file paths of all visible text editors that belong to the current workspace.
+ *
+ * @returns {string[]} An array of file paths for the visible text editors that are part of the workspace.
+ */
+function getVisibleWorkspaceFiles(): string[] {
+    const visibleEditors = vscode.window.visibleTextEditors;
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    let workspaceFiles: string[] = [];
+
+    if (workspaceFolders && visibleEditors.length > 0) {
+        // Get the list of workspace folders (as paths)
+        const workspacePaths = workspaceFolders.map(folder => folder.uri.fsPath);
+
+        // Loop through all visible editors
+        visibleEditors.forEach(editor => {
+            const filePath = editor.document.uri.fsPath;
+
+            // Check if the file belongs to any workspace folder
+            const isInWorkspace = workspacePaths.some(workspacePath => filePath.startsWith(workspacePath));
+
+            // If the file is in the workspace, add it to the list
+            if (isInWorkspace) {
+                workspaceFiles.push(filePath);
+            }
+        });
+    }
+
+    return workspaceFiles;
+}
+
+/**
  * Retrieves the prompt for the user including chat history.
  * 
  * If response is null, the prompt is returned with the chat history.
@@ -245,6 +278,7 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
     }
 
     let strContext = "";
+    let visibleFiles = getVisibleWorkspaceFiles()
 
     for (let i = 0; i < previousMessagesList.length; i++) {
         strContext += previousMessagesList[i];
@@ -252,6 +286,26 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
 
     if (prompt === null) {
         return strContext;
+    }
+
+    let filesContext: string | null = null;
+    let enabled = false;
+    
+    // Feature disable for now
+    if (enabled && visibleFiles.length > 0) {
+        // Initialize the context with a description of the workspace files
+        filesContext = `Important: You have access to the following files in the workspace that you can use to formulate an answer to the user question:\n`;
+
+        // Append each file name to the context
+        visibleFiles.forEach(file => {
+            filesContext += `- ${file}\n`;
+        });
+
+        // Provide a clear example to guide the response
+        filesContext += `\nExample:\n`;
+        filesContext += `User question: "Compile the IDL and generate C++ code."\n`;
+        filesContext += `Workspace file: "SensorData.idl"\n`;
+        filesContext += `Expected response: "rtiddsgen ... SensorData.idl"\n`;
     }
 
     if (editor && response == null) {
@@ -266,8 +320,16 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
         } else {
             strContext += `User ask: ${prompt}\n`
         }
+
+        if (filesContext != null) {
+            strContext += filesContext;
+        }
     } else {
         strContext += `User ask: ${prompt}\n`
+
+        if (filesContext != null) {
+            strContext += filesContext;
+        }
 
         if (response !== null) {
             strContext += `Bot response: ${response}\n`
@@ -575,6 +637,164 @@ function runApplication(applicationName: string) {
 }
 
 /**
+ * Finds the architecture directories within the given installation path.
+ *
+ * @param installationPath - The path to the installation directory.
+ * @returns An array of directory names that do not start with "java", or `undefined` if an error occurs.
+ */
+function findArchitecture(installationPath: string): string[] | undefined {
+    const libPath = path.join(installationPath, 'lib');
+
+    try {
+        // Read the contents of the lib directory synchronously
+        const files = fs.readdirSync(libPath);
+
+        // Filter the files to find the directories that don't start with "java"
+        const matchingDirs = files.filter(file => {
+            const fullPath = path.join(libPath, file);
+            try {
+                return fs.statSync(fullPath).isDirectory() && !file.startsWith('java');
+            } catch (e) {
+                return false;
+            }
+        });
+
+        let result: string[] = [];
+
+        for (let dir of matchingDirs) {
+            result.push(dir);
+        }
+
+        return result;
+    } catch (err) {
+        return undefined;  // Return undefined if there is an error reading the directory
+    }
+}
+
+/**
+ * Finds the RTI Connext DDS directory based on the current platform and environment variables.
+ *
+ * The function first checks if the `NDDSHOME` environment variable is set and returns its value if available.
+ * If `NDDSHOME` is not set, it determines the parent directory based on the platform:
+ * - For Linux, it uses the `HOME` or `USERPROFILE` environment variable.
+ * - For macOS (darwin), it uses the `/Applications` directory.
+ * - For Windows (win32), it uses the `ProgramFiles` environment variable.
+ *
+ * The function then searches the determined parent directory for subdirectories that start with "rti_connext_dds-".
+ * If such directories are found, their paths are returned as an array of strings.
+ * If no matching directories are found or an error occurs, the function returns `undefined`.
+ *
+ * @returns {string[] | undefined} An array of paths to the RTI Connext DDS directories, or `undefined` if none are found.
+ */
+function findRTIConnextDDSDirectory(): string[] | undefined {
+    let parentDir: string | undefined = undefined;
+
+    if (process.env.NDDSHOME) {
+        return [process.env.NDDSHOME];
+    }
+    
+    if (process.platform === 'linux') {
+        parentDir = process.env.HOME || process.env.USERPROFILE;
+    } else if (process.platform === 'darwin') {
+        parentDir = "/Applications";
+    } else if (process.platform === 'win32') {
+        parentDir = process.env.ProgramFiles;
+    }
+
+    if (!parentDir) {
+        return undefined;
+    }
+
+    let result: string[] = [];
+
+    try {
+        // Read the contents of the home directory synchronously
+        const files = fs.readdirSync(parentDir);
+
+        // Filter the files to find directories that start with "rti_connext_dds-"
+        const matchingDirs = files.filter(file => {
+            const fullPath = path.join(parentDir, file);
+            try {
+                return fs.statSync(fullPath).isDirectory() && file.startsWith('rti_connext_dds-');
+            } catch (e) {
+                return false;
+            }
+        });
+
+        for (let dir of matchingDirs) {
+            result.push(path.join(parentDir, dir));
+        }
+    } catch (err) {
+        return undefined;
+    }
+
+    return result;
+}
+
+/**
+ * Provides information about RTI Connext DDS installations on the system.
+ * 
+ * This function searches for RTI Connext DDS installation directories and 
+ * generates a markdown response with the details of each installation found.
+ * It includes the directory paths and supported architectures. Additionally,
+ * it provides shell commands to set up the environment for development with 
+ * the found installations.
+ * 
+ * @param response - The response stream to which the markdown output will be written.
+ */
+function connextInfo(response: vscode.ChatResponseStream) {
+    let installationDirectories = findRTIConnextDDSDirectory();
+
+    if (installationDirectories == undefined || installationDirectories.length == 0) {
+        response.markdown(`I could not find any RTI Connext DDS installations on this system.`);
+        return;
+    }
+
+    response.markdown(`I found the following RTI Connext DDS installations on this system:\n\n`);
+
+    let count = 1;
+
+    for (let dir of installationDirectories) {
+        let architectures = findArchitecture(installationDirectories[0]);
+    
+        response.markdown(`### Installation ${count}:\n`);
+        response.markdown(`*Directory:* \`\`\`${dir}\`\`\`\n`);
+
+        if (architectures == undefined || architectures.length == 0) {
+            continue;
+        }
+
+        response.markdown(`\n*Architectures:* \`\`\`${architectures.join(", ")}\`\`\`\n`);
+        response.markdown(`\n`);
+
+        if (process.platform === 'linux' || process.platform === 'darwin') {
+            let shellCmd = process.env.SHELL;
+
+            if (shellCmd == undefined) {
+                shellCmd = '/bin/bash';
+            }
+
+            let shell = 'bash';
+            
+            if (shellCmd.endsWith('zsh')) {
+                shell = 'zsh';
+            } else if (shellCmd.endsWith('tcsh')) {
+                shell = 'tcsh';
+            }
+
+            response.markdown(`Set the environment to develop with this installation by running the following command(s):\n\n`);
+
+            for (let arch of architectures) {
+                response.markdown(`${arch} - ${shell}:\n\n`);
+                response.markdown(`\`\`\`sh\nsource ${dir}/resource/scripts/rtisetenv_${arch}.${shell}\n\`\`\`\n`);
+            }
+        }
+
+        count++;
+    }
+}
+
+/**
  * Activates the extension.
  * 
  * This method is called when your extension is activated
@@ -676,7 +896,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         runApplication(command);
     });
-    
+
     // Run System Designer
     vscode.commands.registerCommand('connext-vc-copilot.run-system-designer', () => {
         const command = 'rtisystemdesigner';
@@ -702,7 +922,7 @@ export function activate(context: vscode.ExtensionContext) {
     globalThis.globalState.storedPassword = context.globalState.get<string>(globalThis.globalState.connextPasswordKey);
 
     // Create a Copilot chat participant
-    const chat = vscode.chat.createChatParticipant("connext-vc-copilot.chat", async (request, context, response, token) => {
+    const chat = vscode.chat.createChatParticipant("connext-vc-copilot.chat", async (request, context, response: vscode.ChatResponseStream, token) => {
         globalState.lastPrompt = request.prompt;
 
         if (globalThis.globalState.storedUsername === undefined || globalThis.globalState.storedPassword === undefined) {
@@ -748,26 +968,29 @@ export function activate(context: vscode.ExtensionContext) {
             globalThis.globalState.accessCode = jsonResponse.access_token;
         }
 
-        if (request.command === 'start-admin-console') {
+        if (request.command === 'startAdminConsole') {
             runApplication('rtiadminconsole');
             response.markdown("Starting RTI Admin Console...");
             return
-        } else if (request.command === 'start-system-designer') {
+        } else if (request.command === 'startSystemDesigner') {
             runApplication('rtisystemdesigner');
             response.markdown("Starting RTI System Designer...");
             return
-        } else if (request.command === 'start-monitor-ui') {
+        } else if (request.command === 'startMonitorUI') {
             runApplication('rtimonitor');
             response.markdown("Starting RTI Monitor...");
             return
-        } else if (request.command === 'start-shapes-demo') {
+        } else if (request.command === 'startShapesDemo') {
             runApplication('rtishapesdemo');
             response.markdown("Starting RTI Shapes Demo...");
-            return 
+            return
+        } else if (request.command === 'connextInfo') {
+            let connextPath = connextInfo(response);
+            return
         }
 
         //let botFollowup = await generateBotFollowUp(getPrompt(globalState.lastPrompt, null, context), token);
-        
+
         //if (botFollowup != null) {
         //    response.markdown(botFollowup);
         //    return;
@@ -910,10 +1133,10 @@ export function activate(context: vscode.ExtensionContext) {
         async provideFollowups(
             result: IChatResult, context: vscode.ChatContext, token: vscode.CancellationToken) {
             if (result.metadata == undefined
-                || (result.metadata.command != 'start-admin-console'
-                && result.metadata.command != 'start-system-designer'
-                && result.metadata.command != 'start-monitor-ui'
-                && result.metadata.command != 'start-shapes-demo')) {
+                || (result.metadata.command != 'startAdminConsole'
+                    && result.metadata.command != 'startSystemDesigner'
+                    && result.metadata.command != 'startMonitorUI'
+                    && result.metadata.command != 'startShapesDemo')) {
                 return await generateFollowUps(globalState.NUM_FOLLOWUPS, getPrompt(globalState.lastPrompt, globalState.lastResponse, context), token);
             }
         }

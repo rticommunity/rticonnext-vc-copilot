@@ -69,20 +69,24 @@
                 "isSticky": true,
                 "commands": [
                     {
-                        "name": "start-admin-console",
+                        "name": "startAdminConsole",
                         "description": "Start RTI Admin Console"
                     },
                     {
-                        "name": "start-system-designer",
+                        "name": "startSystemDesigner",
                         "description": "Start RTI System Designer"
                     },
                     {
-                        "name": "start-monitor-ui",
+                        "name": "startMonitorUI",
                         "description": "Start RTI Monitor"
                     },
                     {
-                        "name": "start-shapes-demo",
+                        "name": "startShapesDemo",
                         "description": "Start RTI Shapes Demo"
+                    },
+                    {
+                        "name": "connextInfo",
+                        "description": "Show Connext installation(s) info"
                     }
                 ]
             }
