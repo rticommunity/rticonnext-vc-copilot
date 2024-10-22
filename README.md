@@ -39,6 +39,25 @@ one of the available options.
 
 ![Quick chat](images/context_menu.gif)
 
+## Commands
+
+This extension allows invoking pre-defined commands from the chat window by 
+typing `@connext` followed by the `/<command>`.
+
+The available commands are:
+
+* `/connextInfo`: Displays information about the Connext versions installed
+    on your system. If there are multiple versions installed, the expert will
+    ask you to choose which one you want to use as the default.
+* `/startAdminConsole`: Opens RTI Admin Console using the default installation.
+* `/startSystemDesigner`: Opens the RTI System Designer using the default
+    installation.
+* `/startMonitorUI`: Opens the RTI Monitor UI using the default installation.
+* `/startShapesDemo`: Starts the RTI Shapes Demo using the default installation.
+
+The commands that start tools will fail if there is no default installation
+configured.
+
 ## Extension Settings
 
 To use the Connext for Github Copilot extension, you need to login to your
@@ -52,11 +71,14 @@ and selecting "Connext: Logout".
 If you do not log in, the Connext expert will ask you to log in when you try to
 ask a question.
 
-## Known Issues
-
-Streaming is not supported in the current version of the extension.
-
 ## Release Notes
+
+### 0.0.2 (Beta)
+
+Added support for commands to start RTI tools from the chat window and
+to show information about the Connext versions installed on your system.
+
+Added support for streaming.
 
 ### 0.0.1 (Beta)
 
