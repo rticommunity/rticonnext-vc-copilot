@@ -78,7 +78,8 @@ interface Secrets {
 
 interface IChatResult extends vscode.ChatResult {
     metadata: {
-        command: string;
+        command: string | undefined;
+        error: boolean;
     }
 }
 
@@ -918,7 +919,9 @@ export function activate(context: vscode.ExtensionContext) {
     globalThis.globalState.storedPassword = context.globalState.get<string>(globalThis.globalState.connextPasswordKey);
 
     // Create a Copilot chat participant
-    const chat = vscode.chat.createChatParticipant("connext-vc-copilot.chat", async (request, context, response: vscode.ChatResponseStream, token) => {
+    const chat = vscode.chat.createChatParticipant("connext-vc-copilot.chat", async (request, context, response: vscode.ChatResponseStream, token) : Promise<IChatResult> => {
+        let result: IChatResult = { metadata: { command: request.command, error: false } };
+
         globalState.lastPrompt = request.prompt;
 
         if (globalThis.globalState.storedUsername === undefined || globalThis.globalState.storedPassword === undefined) {
@@ -926,7 +929,8 @@ export function activate(context: vscode.ExtensionContext) {
 
             if (!success) {
                 vscode.window.showInformationMessage(`Please log in to ${globalThis.globalState.connextProduct} to continue.`);
-                return;
+                result.metadata.error = true;
+                return result;
             }
         }
 
@@ -958,7 +962,8 @@ export function activate(context: vscode.ExtensionContext) {
 
             if (jsonResponse.error) {
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Error getting access token: ${jsonResponse.error_description}`);
-                return;
+                result.metadata.error = true;
+                return result; 
             }
 
             globalThis.globalState.accessCode = jsonResponse.access_token;
@@ -967,22 +972,22 @@ export function activate(context: vscode.ExtensionContext) {
         if (request.command === 'startAdminConsole') {
             runApplicationCommand('rtiadminconsole');
             response.markdown("Starting RTI Admin Console...");
-            return
+            return result;
         } else if (request.command === 'startSystemDesigner') {
             runApplicationCommand('rtisystemdesigner');
             response.markdown("Starting RTI System Designer...");
-            return
+            return result;
         } else if (request.command === 'startMonitorUI') {
             runApplicationCommand('rtimonitor');
             response.markdown("Starting RTI Monitor...");
-            return
+            return result;
         } else if (request.command === 'startShapesDemo') {
             runApplicationCommand('rtishapesdemo');
             response.markdown("Starting RTI Shapes Demo...");
-            return
+            return result;
         } else if (request.command === 'connextInfo') {
             connextInfo(response);
-            return
+            return result;
         }
 
         //let botFollowup = await generateBotFollowUp(getPrompt(globalState.lastPrompt, null, context, false), token);
@@ -1025,7 +1030,8 @@ export function activate(context: vscode.ExtensionContext) {
 
             if (!globalThis.globalState.connectionReady) {
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Connection to the server failed.`);
-                return;
+                result.metadata.error = true;
+                return result;
             }
         } else {
             socket = globalThis.globalState.socket;
@@ -1042,14 +1048,16 @@ export function activate(context: vscode.ExtensionContext) {
             } catch (error) {
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Failed to parse response from server: ${error}`);
                 responseReceived = true;
-                return;
+                result.metadata.error = true;
+                return result;
             }
 
             // Check if there's an error in the response
             if (parsedData.error) {
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Error processing request in server: ${parsedData.error_description}`);
                 responseReceived = true;
-                return;
+                result.metadata.error = true;
+                return result;
             }
 
             if (parsedData.last_token && parsedData.last_token === true) {
@@ -1123,13 +1131,18 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         socket.off('response');
+        return result;
     });
 
     chat.followupProvider = {
         async provideFollowups(
             result: IChatResult, context: vscode.ChatContext, token: vscode.CancellationToken) {
-            if (result.metadata == undefined
-                || (result.metadata.command != 'startAdminConsole'
+            
+                if (result.metadata.error) {
+                return [];
+            }
+
+            if ((result.metadata.command != 'startAdminConsole'
                     && result.metadata.command != 'startSystemDesigner'
                     && result.metadata.command != 'startMonitorUI'
                     && result.metadata.command != 'startShapesDemo'
