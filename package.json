@@ -59,6 +59,10 @@
             {
                 "command": "connext-vc-copilot.run-shapes-demo",
                 "title": "Connext: Run RTI Shapes Demo"
+            },
+            {
+                "command": "connext-vc-copilot.select-installation",
+                "title": "Connext: Select Installation"
             }
         ],
         "chatParticipants": [
