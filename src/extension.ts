@@ -1025,7 +1025,7 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             });
 
-            await waitForCondition(() => globalThis.globalState.connectionReady, 10000, 10);
+            await waitForCondition(() => globalThis.globalState.connectionReady, 10000, 100);
 
             if (!globalThis.globalState.connectionReady) {
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Connection to the server failed.`);
@@ -1074,7 +1074,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         socket.emit('message', JSON.stringify(jsonPayload));
 
-        await waitForCondition(() => responseReceived, 120000, 10);
+        await waitForCondition(() => responseReceived || !globalThis.globalState.connectionReady, 120000, 100);
 
         if (!responseReceived) {
             vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Request timed out.`);
