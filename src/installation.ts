@@ -232,7 +232,7 @@ export function getConnextInstallations(): Installation[] {
             continue;
         }
 
-        if (process.platform === 'linux' || process.platform === 'darwin') {
+        if (process.platform === 'linux' || process.platform === 'darwin' || process.platform === 'win32') {
             let shellCmd = process.env.SHELL;
 
             if (shellCmd == undefined) {
@@ -245,12 +245,21 @@ export function getConnextInstallations(): Installation[] {
                 shell = 'zsh';
             } else if (shellCmd.endsWith('tcsh')) {
                 shell = 'tcsh';
+            } else if (process.platform === 'win32') {
+                shell = 'bat';
             }
 
             let architectures: Architecture[] = [];
 
             for (let arch of architecturesNames) {
-                let setEnvCmd = `source ${dir}/resource/scripts/rtisetenv_${arch}.${shell}`;
+                let setEnvCmd = undefined;
+
+                if (process.platform === 'win32') {
+                    setEnvCmd = `"${dir}/resource/scripts/rtisetenv_${arch}"`;
+                } else {
+                    setEnvCmd = `source ${dir}/resource/scripts/rtisetenv_${arch}.${shell}`;
+                }
+
                 let defaultArch = false;
 
                 if (defaultInstallation && architecturesNames.length == 1) {
@@ -310,6 +319,5 @@ export function runApplication(installations: Installation[] | undefined, applic
         }
     });
 }
-
 
 

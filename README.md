@@ -70,16 +70,3 @@ and selecting "Connext: Logout".
 
 If you do not log in, the Connext expert will ask you to log in when you try to
 ask a question.
-
-## Release Notes
-
-### 0.0.2 (Beta)
-
-Added support for commands to start RTI tools from the chat window and
-to show information about the Connext versions installed on your system.
-
-Added support for streaming.
-
-### 0.0.1 (Beta)
-
-Initial release of Connext for Github Copilot
