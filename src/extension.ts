@@ -757,6 +757,14 @@ function connextInfo(response: vscode.ChatResponseStream) {
     }
 }
 
+async function logout(context: vscode.ExtensionContext) {
+    await context.globalState.update(globalThis.globalState.connextUsernameKey, undefined);
+    globalThis.globalState.storedUsername = undefined;
+    await context.globalState.update(globalThis.globalState.connextPasswordKey, undefined);
+    globalThis.globalState.storedPassword = undefined;
+    globalThis.globalState.accessCode = undefined
+}
+
 /**
  * Activates the extension.
  * 
@@ -828,11 +836,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register the logout command
     let cidpLogout = vscode.commands.registerCommand('connext-vc-copilot.logout', async () => {
-        await context.globalState.update(globalThis.globalState.connextUsernameKey, undefined);
-        globalThis.globalState.storedUsername = undefined;
-        await context.globalState.update(globalThis.globalState.connextPasswordKey, undefined);
-        globalThis.globalState.storedPassword = undefined;
-        globalThis.globalState.accessCode = undefined
+        await logout(context);
         vscode.window.showInformationMessage(`${globalThis.globalState.connextProduct}: Credentials have been cleared.`);
     });
 
@@ -922,6 +926,8 @@ export function activate(context: vscode.ExtensionContext) {
     globalThis.globalState.storedUsername = context.globalState.get<string>(globalThis.globalState.connextUsernameKey);
     globalThis.globalState.storedPassword = context.globalState.get<string>(globalThis.globalState.connextPasswordKey);
 
+    let extensionContext = context;
+
     // Create a Copilot chat participant
     const chat = vscode.chat.createChatParticipant("connext-vc-copilot.chat", async (request, context, response: vscode.ChatResponseStream, token) : Promise<IChatResult> => {
         let result: IChatResult = { metadata: { command: request.command, error: false } };
@@ -965,6 +971,7 @@ export function activate(context: vscode.ExtensionContext) {
             const jsonResponse = await makeHttpRequest(uri, options)
 
             if (jsonResponse.error) {
+                await logout(extensionContext);
                 vscode.window.showErrorMessage(`${globalThis.globalState.connextProduct}: Error getting access token: ${jsonResponse.error_description}`);
                 result.metadata.error = true;
                 return result; 
