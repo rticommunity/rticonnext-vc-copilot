@@ -377,6 +377,10 @@ function getPrompt(prompt: string | null, response: string | null, context: vsco
             strContext += `${prompt}\n`;
         }
 
+        if (rest_api) {
+            strContext += EndHumanRestMessage;
+        }
+
         if (filesContext != null) {
             strContext += filesContext;
         }
