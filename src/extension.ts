@@ -787,12 +787,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register the login command
     let cidpLogin = vscode.commands.registerCommand('connext-vc-copilot.login', async () => {
+            await logout(context);
 
-        // Check if username and password are already stored
-        const storedUsername = context.globalState.get<string>(globalThis.globalState.connextUsernameKey);
-        const storedPassword = context.globalState.get<string>(globalThis.globalState.connextPasswordKey);
-
-        if (!storedUsername || !storedPassword) {
             // Ask for username if not stored
             const username = await vscode.window.showInputBox({
                 prompt: 'Enter your username',
@@ -821,15 +817,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             globalThis.globalState.storedUsername = username;
             globalThis.globalState.storedPassword = password;
-        } else {
-            globalThis.globalState.storedUsername = storedUsername;
-            globalThis.globalState.storedPassword = storedPassword;
-
-            // If credentials already exist, display a confirmation message
-            vscode.window.showInformationMessage(`${globalThis.globalState.connextProduct}: Welcome back, ${storedUsername}!`);
-        }
-
-        return true;
+            return true;
     });
 
     context.subscriptions.push(cidpLogin);
