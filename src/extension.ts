@@ -729,6 +729,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
     let count = 1;
 
     for (let installation of installations) {
+        response.markdown(`------------------------------------------------\n`);
         response.markdown(`## Installation ${count}\n`);
         response.markdown(`- *Directory:* \`${installation.directory}\`\n\n`);
         response.markdown(`- *Default:* \`${installation.default ? 'Yes' : 'No'}\`\n`);

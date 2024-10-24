@@ -220,7 +220,7 @@ export function getConnextInstallations(): Installation[] {
     let count = 1;
 
     for (let dir of installationDirectories) {
-        let architecturesNames = findArchitecture(installationDirectories[0]);
+        let architecturesNames = findArchitecture(dir);
         let defaultInstallation = false;
 
         if (process.env.NDDSHOME == dir || installationDirectories.length == 1) {
