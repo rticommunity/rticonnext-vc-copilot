@@ -7,10 +7,10 @@
  * This code contains trade secrets of Real-Time Innovations, Inc.
  */
 
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-import { exec } from 'child_process';
+import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
+import { exec } from "child_process";
 
 /**
  * Represents a system architecture with a name, environment setup command, and a default flag.
@@ -49,7 +49,9 @@ export class Architecture {
         this.default = defaultArch;
 
         /* Replace extension with bash */
-        this.toolEnvCmd = setEnvCmd.replace('zsh', 'bash').replace('tcsh', 'bash');
+        this.toolEnvCmd = setEnvCmd
+            .replace("zsh", "bash")
+            .replace("tcsh", "bash");
     }
 }
 
@@ -78,7 +80,11 @@ export class Installation {
      * @param architectures - The architectures supported by this installation.
      * @param defaultInstallation - Indicates whether this installation is the default one.
      */
-    constructor(directory: string, architectures: Architecture[], defaultInstallation: boolean = false) {
+    constructor(
+        directory: string,
+        architectures: Architecture[],
+        defaultInstallation: boolean = false
+    ) {
         this.directory = directory;
         this.architectures = architectures;
         this.default = defaultInstallation;
@@ -106,17 +112,20 @@ export class Installation {
  * @returns An array of directory names that do not start with "java", or `undefined` if an error occurs.
  */
 function findArchitecture(installationPath: string): string[] | undefined {
-    const libPath = path.join(installationPath, 'lib');
+    const libPath = path.join(installationPath, "lib");
 
     try {
         // Read the contents of the lib directory synchronously
         const files = fs.readdirSync(libPath);
 
         // Filter the files to find the directories that don't start with "java"
-        const matchingDirs = files.filter(file => {
+        const matchingDirs = files.filter((file) => {
             const fullPath = path.join(libPath, file);
             try {
-                return fs.statSync(fullPath).isDirectory() && !file.startsWith('java');
+                return (
+                    fs.statSync(fullPath).isDirectory() &&
+                    !file.startsWith("java")
+                );
             } catch (e) {
                 return false;
             }
@@ -130,33 +139,33 @@ function findArchitecture(installationPath: string): string[] | undefined {
 
         return result;
     } catch (err) {
-        return undefined;  // Return undefined if there is an error reading the directory
+        return undefined; // Return undefined if there is an error reading the directory
     }
 }
 
 /**
  * Finds the RTI Connext DDS installation directories on the system.
- * 
+ *
  * This function searches for directories that start with "rti_connext_dds-" in the
  * appropriate parent directory based on the operating system:
  * - On Linux, it searches in the user's home directory.
  * - On macOS, it searches in the "/Applications" directory.
  * - On Windows, it searches in the "Program Files" directory.
- * 
+ *
  * Additionally, if the `NDDSHOME` environment variable is set, its value is included
  * in the result if it is not already present.
- * 
+ *
  * @returns {string[] | undefined} An array of paths to the RTI Connext DDS directories,
  * or `undefined` if no directories are found or an error occurs.
  */
 function findRTIConnextDDSDirectory(): string[] | undefined {
     let parentDir: string | undefined = undefined;
 
-    if (process.platform === 'linux') {
+    if (process.platform === "linux") {
         parentDir = process.env.HOME || process.env.USERPROFILE;
-    } else if (process.platform === 'darwin') {
+    } else if (process.platform === "darwin") {
         parentDir = "/Applications";
-    } else if (process.platform === 'win32') {
+    } else if (process.platform === "win32") {
         parentDir = process.env.ProgramFiles;
     }
 
@@ -171,10 +180,13 @@ function findRTIConnextDDSDirectory(): string[] | undefined {
         const files = fs.readdirSync(parentDir);
 
         // Filter the files to find directories that start with "rti_connext_dds-"
-        const matchingDirs = files.filter(file => {
+        const matchingDirs = files.filter((file) => {
             const fullPath = path.join(parentDir, file);
             try {
-                return fs.statSync(fullPath).isDirectory() && file.startsWith('rti_connext_dds-');
+                return (
+                    fs.statSync(fullPath).isDirectory() &&
+                    file.startsWith("rti_connext_dds-")
+                );
             } catch (e) {
                 return false;
             }
@@ -200,20 +212,23 @@ function findRTIConnextDDSDirectory(): string[] | undefined {
 /**
  * Retrieves a list of RTI Connext DDS installations.
  *
- * This function searches for RTI Connext DDS installation directories and 
- * their corresponding architectures. It constructs an array of `Installation` 
- * objects, each containing the directory path and an array of `Architecture` 
+ * This function searches for RTI Connext DDS installation directories and
+ * their corresponding architectures. It constructs an array of `Installation`
+ * objects, each containing the directory path and an array of `Architecture`
  * objects with the appropriate environment setup commands.
  *
- * @returns {Installation[]} An array of `Installation` objects representing 
- * the found RTI Connext DDS installations. If no installations are found, 
+ * @returns {Installation[]} An array of `Installation` objects representing
+ * the found RTI Connext DDS installations. If no installations are found,
  * an empty array is returned.
  */
 export function getConnextInstallations(): Installation[] {
     let installations: Installation[] = [];
     let installationDirectories = findRTIConnextDDSDirectory();
 
-    if (installationDirectories == undefined || installationDirectories.length == 0) {
+    if (
+        installationDirectories == undefined ||
+        installationDirectories.length == 0
+    ) {
         return [];
     }
 
@@ -223,7 +238,10 @@ export function getConnextInstallations(): Installation[] {
         let architecturesNames = findArchitecture(dir);
         let defaultInstallation = false;
 
-        if (process.env.NDDSHOME == dir || installationDirectories.length == 1) {
+        if (
+            process.env.NDDSHOME == dir ||
+            installationDirectories.length == 1
+        ) {
             defaultInstallation = true;
         }
 
@@ -232,21 +250,25 @@ export function getConnextInstallations(): Installation[] {
             continue;
         }
 
-        if (process.platform === 'linux' || process.platform === 'darwin' || process.platform === 'win32') {
+        if (
+            process.platform === "linux" ||
+            process.platform === "darwin" ||
+            process.platform === "win32"
+        ) {
             let shellCmd = process.env.SHELL;
 
             if (shellCmd == undefined) {
-                shellCmd = '/bin/bash';
+                shellCmd = "/bin/bash";
             }
 
-            let shell = 'bash';
+            let shell = "bash";
 
-            if (shellCmd.endsWith('zsh')) {
-                shell = 'zsh';
-            } else if (shellCmd.endsWith('tcsh')) {
-                shell = 'tcsh';
-            } else if (process.platform === 'win32') {
-                shell = 'bat';
+            if (shellCmd.endsWith("zsh")) {
+                shell = "zsh";
+            } else if (shellCmd.endsWith("tcsh")) {
+                shell = "tcsh";
+            } else if (process.platform === "win32") {
+                shell = "bat";
             }
 
             let architectures: Architecture[] = [];
@@ -254,7 +276,7 @@ export function getConnextInstallations(): Installation[] {
             for (let arch of architecturesNames) {
                 let setEnvCmd = undefined;
 
-                if (process.platform === 'win32') {
+                if (process.platform === "win32") {
                     setEnvCmd = `"${dir}/resource/scripts/rtisetenv_${arch}"`;
                 } else {
                     setEnvCmd = `source ${dir}/resource/scripts/rtisetenv_${arch}.${shell}`;
@@ -266,10 +288,14 @@ export function getConnextInstallations(): Installation[] {
                     defaultArch = true;
                 }
 
-                architectures.push(new Architecture(arch, setEnvCmd, defaultArch));
+                architectures.push(
+                    new Architecture(arch, setEnvCmd, defaultArch)
+                );
             }
 
-            installations.push(new Installation(dir, architectures, defaultInstallation));
+            installations.push(
+                new Installation(dir, architectures, defaultInstallation)
+            );
         }
 
         count++;
@@ -282,10 +308,12 @@ export function getConnextInstallations(): Installation[] {
  * Retrieves the default installation and its default architecture from a list of installations.
  *
  * @param installations - An array of `Installation` objects to search through.
- * @returns A tuple containing the default `Installation` and its default `Architecture`, 
+ * @returns A tuple containing the default `Installation` and its default `Architecture`,
  *          or `undefined` if no default installation or architecture is found.
  */
-function getDefaultInstallation(installations: Installation[]): [Installation, Architecture] | undefined {
+function getDefaultInstallation(
+    installations: Installation[]
+): [Installation, Architecture] | undefined {
     for (let installation of installations) {
         if (installation.default) {
             for (let arch of installation.architectures) {
@@ -299,14 +327,18 @@ function getDefaultInstallation(installations: Installation[]): [Installation, A
     return undefined;
 }
 
-export function runApplication(installations: Installation[] | undefined, applicationName: string) {
+export function runApplication(
+    installations: Installation[] | undefined,
+    applicationName: string
+) {
     let command = applicationName;
 
     if (installations != undefined) {
         let defaultInstallation = getDefaultInstallation(installations);
 
         if (defaultInstallation != undefined) {
-            command = defaultInstallation[1].toolEnvCmd + ' && ' + applicationName;
+            command =
+                defaultInstallation[1].toolEnvCmd + " && " + applicationName;
         }
     }
 
@@ -314,10 +346,10 @@ export function runApplication(installations: Installation[] | undefined, applic
     exec(command, (err, stdout, stderr) => {
         if (err) {
             // Handle the error
-            vscode.window.showErrorMessage(`Error running command: ${err.message}`);
+            vscode.window.showErrorMessage(
+                `Error running command: ${err.message}`
+            );
             return;
         }
     });
 }
-
-
