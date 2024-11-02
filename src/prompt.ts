@@ -11,16 +11,6 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { Installation, Architecture, getDefaultInstallation } from "./installation";
 
-let FILE_NAME_USAGE_PROMPT = `
-    When constructing responses that involve using file names, use specific URIs 
-    from the conversation if available instead of generic placeholders.
-
-    Example Clarification:
-    - If a command is needed for a file located at /tmp/Temperature.xml:
-    \t- Not Preferred: rtiddsgen -language C++ -example <your_file.xml>
-    \t- Preferred: rtiddsgen -language C++ -example /tmp/Temperature.xml
-    `;
-
 let START_WORKSPACE_INFO = `[Start Workspace Info]\n`;
 let END_WORKSPACE_INFO = `[End Workspace Info]\n`;
 
@@ -188,6 +178,8 @@ function generatePromptWithWorkspaceInfo(
 
     // Create a structured template for the content references
     promptWithInfo += START_WORKSPACE_INFO;
+    promptWithInfo += `Use the following workspace information to respond to the previous request more specifically.\n`
+
     if (promptReferences.length > 0) {
         promptWithInfo += `Consider the content references provided in the JSON format below to respond to the previous request:\n\n`;
 
@@ -392,7 +384,6 @@ export function getPrompt(
         promptWithContext += previousMessagesList[i];
     }
 
-    promptWithContext = promptWithContext.replace(FILE_NAME_USAGE_PROMPT, "");
     promptWithContext = promptWithContext.replace(
         new RegExp(`${START_WORKSPACE_INFO}.*?${END_WORKSPACE_INFO}`),
         ""
@@ -408,7 +399,6 @@ export function getPrompt(
         promptWithContext += `${HumanMessage} `;
     }
 
-    promptWithContext += FILE_NAME_USAGE_PROMPT
     promptWithContext += promptWithInfo
 
     if (rest_api) {
@@ -428,6 +418,11 @@ export function getPrompt(
             promptWithContext += EndAiRestMessage;
         }
     }
+
+    // Save prompt string into a file
+    //if (response === null) {
+    //    fs.writeFileSync("/Users/fernando/RTI/AI/demos/demo_plc/prompt.txt", promptWithContext);
+    //}
 
     return promptWithContext;
 }
