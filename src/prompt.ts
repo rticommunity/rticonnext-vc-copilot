@@ -21,8 +21,8 @@ let FILE_NAME_USAGE_PROMPT = `
     \t- Preferred: rtiddsgen -language C++ -example /tmp/Temperature.xml
     `;
 
-let INSTALLATION_NOTE_PREFIX = `Begin Default Installation Info [`;
-let INSTALLATION_NOTE_SUFFIX = `] Begin Default Installation Info\n`;
+let START_WORKSPACE_INFO = `[Start Workspace Info]\n`;
+let END_WORKSPACE_INFO = `[End Workspace Info]\n`;
 
 export enum PromptReferenceKind {
     File,
@@ -160,45 +160,68 @@ function chatPromptReferenceToPromptReference(
     }
 }
 
-/**
- * Generates a prompt string with references appended in a structured JSON format.
- *
- * @param prompt - The original prompt string.
- * @param references - An array of `vscode.ChatPromptReference` objects or undefined.
- * @returns The prompt string with references appended in JSON format, or the original prompt if no references are provided.
- */
-function generatePromptWithReferences(
+function generatePromptWithWorkspaceInfo(
     prompt: string,
+    installations: Installation[] | undefined,
     references: readonly vscode.ChatPromptReference[] | undefined
 ): string {
-    // Return the original prompt if no references are provided
-    if (references == undefined || references.length === 0) {
+
+    let defaultInstallation: [Installation, Architecture] | undefined =
+        undefined;
+
+    if (installations != undefined) {
+        defaultInstallation = getDefaultInstallation(installations);
+    }
+
+    let promptReferences: PromptReference[] = [];
+
+    if (references != undefined && references.length > 0) {
+        promptReferences = chatPromptReferenceToPromptReference(references);
+    }
+
+    // Return the original prompt if no references or default installations are provided
+    if (promptReferences.length === 0 && defaultInstallation == undefined) {
         return prompt + "\n";
     }
 
-    let promptReferences = chatPromptReferenceToPromptReference(references);
-
-    if (promptReferences.length === 0) {
-        return prompt + "\n";
-    }
-
-    let promptWithReferences = prompt + "\n";
+    let promptWithInfo = prompt + "\n";
 
     // Create a structured template for the content references
-    promptWithReferences += `Consider the content references provided in the JSON format below to respond to the previous request:\n\n`;
+    promptWithInfo += START_WORKSPACE_INFO;
+    if (promptReferences.length > 0) {
+        promptWithInfo += `Consider the content references provided in the JSON format below to respond to the previous request:\n\n`;
 
-    promptWithReferences += JSON.stringify(
-        promptReferences.map((ref) => ({
-            kind: PromptReferenceKind[ref.kind],
-            uri: ref.uri?.fsPath,
-            content: ref.content,
-        })),
-        null,
-        2
-    );
+        promptWithInfo += JSON.stringify(
+            promptReferences.map((ref) => ({
+                kind: PromptReferenceKind[ref.kind],
+                uri: ref.uri?.fsPath,
+                content: ref.content,
+            })),
+            null,
+            2
+        );
 
-    promptWithReferences += "\n";
-    return promptWithReferences;
+        promptWithInfo += "\n";
+    }
+
+    // Create a structured template for the default installation information
+    if (defaultInstallation != undefined) {
+        promptWithInfo += `Consider the default installation info provided in the JSON format below to respond to the previous request:\n\n`;
+
+        promptWithInfo += JSON.stringify(
+            {
+                directory: defaultInstallation[0].directory,
+                architecture: defaultInstallation[1].name,
+            },
+            null,
+            2
+        );
+
+        promptWithInfo += "\n";
+    }
+    promptWithInfo += END_WORKSPACE_INFO;
+
+    return promptWithInfo;
 }
 
 /**
@@ -268,38 +291,11 @@ export function getPrompt(
     const AiMessage = "AI message:";
 
     let limit = globalThis.globalState.MAX_HISTORY_LENGTH;
-
-    let installationInfoStr = null;
-
-    if (installations != undefined) {
-        let defaultInstallation: [Installation, Architecture] | undefined =
-            getDefaultInstallation(installations);
-
-        if (defaultInstallation != undefined) {
-
-            installationInfoStr =
-                INSTALLATION_NOTE_PREFIX +
-                `\nFor requests that need information about 
-                the Connext Pro installation, such as the architecture for 
-                which to build or generate code, the default installation is 
-                located at 
-                '${defaultInstallation[0].directory}' with 
-                architecture '${defaultInstallation[1].name}'.\n` +
-                INSTALLATION_NOTE_SUFFIX;
-
-            limit = globalThis.globalState.MAX_HISTORY_LENGTH - installationInfoStr.length;
-
-            if (limit < 0) {
-                limit = 0;
-            }
-        }
-    }
-
-    let promptWithReferences = null;
+    let promptWithInfo = null;
 
     if (prompt != null) {
-        promptWithReferences = generatePromptWithReferences(prompt, references);
-        limit = globalThis.globalState.MAX_HISTORY_LENGTH - promptWithReferences.length;
+        promptWithInfo = generatePromptWithWorkspaceInfo(prompt, installations, references);
+        limit = globalThis.globalState.MAX_HISTORY_LENGTH - promptWithInfo.length;
 
         if (limit < 0) {
             limit = 0;
@@ -398,7 +394,7 @@ export function getPrompt(
 
     promptWithContext = promptWithContext.replace(FILE_NAME_USAGE_PROMPT, "");
     promptWithContext = promptWithContext.replace(
-        new RegExp(`${INSTALLATION_NOTE_PREFIX}.*?${INSTALLATION_NOTE_SUFFIX}`),
+        new RegExp(`${START_WORKSPACE_INFO}.*?${END_WORKSPACE_INFO}`),
         ""
     );
 
@@ -412,12 +408,8 @@ export function getPrompt(
         promptWithContext += `${HumanMessage} `;
     }
 
-    if (installationInfoStr != null) {
-        promptWithContext += installationInfoStr;
-    }
-
     promptWithContext += FILE_NAME_USAGE_PROMPT
-    promptWithContext += promptWithReferences
+    promptWithContext += promptWithInfo
 
     if (rest_api) {
         promptWithContext += EndHumanRestMessage;
@@ -436,7 +428,6 @@ export function getPrompt(
             promptWithContext += EndAiRestMessage;
         }
     }
-
 
     return promptWithContext;
 }
