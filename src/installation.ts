@@ -311,7 +311,7 @@ export function getConnextInstallations(): Installation[] {
  * @returns A tuple containing the default `Installation` and its default `Architecture`,
  *          or `undefined` if no default installation or architecture is found.
  */
-function getDefaultInstallation(
+export function getDefaultInstallation(
     installations: Installation[]
 ): [Installation, Architecture] | undefined {
     for (let installation of installations) {

@@ -20,6 +20,7 @@ import {
     getConnextInstallations,
     runApplication,
 } from "./installation";
+import { getPrompt } from "./prompt";
 
 class GlobalState {
     readonly connextProduct: string;
@@ -192,262 +193,6 @@ async function waitForCondition(
         }
         await new Promise((resolve) => setTimeout(resolve, checkInterval));
     }
-}
-
-/**
- * Retrieves the file paths of all visible text editors that belong to the current workspace.
- *
- * @returns {string[]} An array of file paths for the visible text editors that are part of the workspace.
- */
-function getVisibleWorkspaceFiles(): string[] {
-    const visibleEditors = vscode.window.visibleTextEditors;
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    let workspaceFiles: string[] = [];
-
-    if (workspaceFolders && visibleEditors.length > 0) {
-        // Get the list of workspace folders (as paths)
-        const workspacePaths = workspaceFolders.map(
-            (folder) => folder.uri.fsPath
-        );
-
-        // Loop through all visible editors
-        visibleEditors.forEach((editor) => {
-            const filePath = editor.document.uri.fsPath;
-
-            // Check if the file belongs to any workspace folder
-            const isInWorkspace = workspacePaths.some((workspacePath) =>
-                filePath.startsWith(workspacePath)
-            );
-
-            // If the file is in the workspace, add it to the list
-            if (isInWorkspace) {
-                workspaceFiles.push(filePath);
-            }
-        });
-    }
-
-    return workspaceFiles;
-}
-
-/**
- * Retrieves the prompt for the user including chat history.
- *
- * If response is null, the prompt is returned with the chat history.
- * If response is not null, the prompt is returned with the chat history and
- * the response for the prompt.
- *
- * @param prompt - The prompt.
- * @param response - The response.
- * @param context - The chat context containing the history of previous messages.
- * @returns The chat history with the prompt and response.
- */
-function getPrompt(
-    prompt: string | null,
-    response: string | null,
-    context: vscode.ChatContext,
-    rest_api: boolean = true
-): string {
-    let previousMessages = context.history;
-    const editor = vscode.window.activeTextEditor;
-
-    const BeginHumanRestMessage = "[[BEGIN Human message]]\n";
-    const EndHumanRestMessage = "[[END Human message]]\n";
-    const BeginAiRestMessage = "[[BEGIN AI message]]\n";
-    const EndAiRestMessage = "[[END AI message]]\n";
-    const HumanMessage = "Human message:";
-    const AiMessage = "AI message:";
-
-    // Limit the number of previous messages to the maximum history length
-    let limit = globalThis.globalState.MAX_HISTORY_LENGTH;
-
-    if (editor) {
-        const selection = editor.selection;
-        const text = editor.document.getText(selection);
-        limit = globalThis.globalState.MAX_HISTORY_LENGTH - text.length;
-
-        if (limit < 0) {
-            limit = 0;
-        }
-    }
-
-    let previousMessagesList = [];
-
-    for (
-        let i = previousMessages.length - 1, userAsk = false, totalLength = 0;
-        i >= 0;
-        i--
-    ) {
-        if (previousMessages[i] instanceof vscode.ChatRequestTurn) {
-            const turn = previousMessages[i] as vscode.ChatRequestTurn;
-
-            let request = "";
-            if (rest_api) {
-                request += BeginHumanRestMessage;
-                request += `${turn.prompt}\n`;
-                request += EndHumanRestMessage;
-            } else {
-                request += `${HumanMessage} ${turn.prompt}\n`;
-            }
-
-            previousMessagesList.unshift(request);
-            totalLength += turn.prompt.length;
-            userAsk = true;
-        } else if (previousMessages[i] instanceof vscode.ChatResponseTurn) {
-            const turn = previousMessages[i] as vscode.ChatResponseTurn;
-            let response = "";
-
-            if (rest_api) {
-                response += BeginAiRestMessage;
-            } else {
-                response += `${AiMessage} `;
-            }
-
-            for (let i = 0; i < turn.response.length; i++) {
-                const responsePart = turn.response[i].value;
-
-                if (responsePart instanceof vscode.MarkdownString) {
-                    response += `${responsePart.value}\n`;
-                }
-            }
-
-            if (rest_api) {
-                response += EndAiRestMessage;
-            }
-
-            if (
-                response.includes(
-                    globalThis.globalState.VALIDATE_CODE_HELP_STRING
-                )
-            ) {
-                response = response.replace(
-                    globalThis.globalState.VALIDATE_CODE_HELP_STRING,
-                    ""
-                );
-            }
-
-            if (
-                response.includes(globalThis.globalState.VALIDATE_CODE_WARNING)
-            ) {
-                response = response.replace(
-                    globalThis.globalState.VALIDATE_CODE_WARNING,
-                    ""
-                );
-            }
-
-            previousMessagesList.unshift(response);
-            totalLength += response.length;
-            userAsk = false;
-        }
-
-        if (totalLength > limit && userAsk) {
-            // Pop the last user ask
-            previousMessagesList.shift();
-
-            if (previousMessagesList.length > 0) {
-                // Pop the last bot response
-                previousMessagesList.shift();
-            }
-
-            break;
-        }
-    }
-
-    let strContext = "";
-    let visibleFiles = getVisibleWorkspaceFiles();
-
-    for (let i = 0; i < previousMessagesList.length; i++) {
-        strContext += previousMessagesList[i];
-    }
-
-    if (prompt === null) {
-        return strContext;
-    }
-
-    let filesContext: string | null = null;
-    let enabled = false;
-
-    // Feature disable for now
-    if (enabled && visibleFiles.length > 0) {
-        // Initialize the context with a description of the workspace files
-
-        if (rest_api) {
-            filesContext = BeginHumanRestMessage;
-        } else {
-            filesContext = `${HumanMessage} `;
-        }
-
-        filesContext = `Important: You have access to the following files in the workspace that you can use to formulate an answer to the human request:\n`;
-
-        // Append each file name to the context
-        visibleFiles.forEach((file) => {
-            filesContext += `- ${file}\n`;
-        });
-
-        // Provide a clear example to guide the response
-        filesContext += `\nExample:\n`;
-        filesContext += `User question: "Compile the IDL and generate C++ code."\n`;
-        filesContext += `Workspace file: "SensorData.idl"\n`;
-        filesContext += `Expected response: "rtiddsgen ... SensorData.idl"\n`;
-
-        if (rest_api) {
-            filesContext += EndHumanRestMessage;
-        }
-    }
-
-    if (editor && response == null) {
-        const selection = editor.selection;
-        const text = editor.document.getText(selection);
-
-        if (rest_api) {
-            strContext += BeginHumanRestMessage;
-        } else {
-            strContext += `${HumanMessage} `;
-        }
-
-        if (text) {
-            strContext += `Given the following text selection, respond to the follow-up request:\n\n`;
-            strContext += `Text selection:\n{{\n${text}\n}}\n`;
-            strContext += `Request: ${prompt}\n`;
-        } else {
-            strContext += `${prompt}\n`;
-        }
-
-        if (rest_api) {
-            strContext += EndHumanRestMessage;
-        }
-
-        if (filesContext != null) {
-            strContext += filesContext;
-        }
-    } else {
-        if (rest_api) {
-            strContext += BeginHumanRestMessage;
-        } else {
-            strContext += `${HumanMessage} `;
-        }
-
-        strContext += `${prompt}\n`;
-
-        if (rest_api) {
-            strContext += EndHumanRestMessage;
-        }
-
-        if (filesContext != null) {
-            strContext += filesContext;
-        }
-
-        if (response !== null) {
-            if (rest_api) {
-                strContext += BeginAiRestMessage;
-            } else {
-                strContext += `${AiMessage} `;
-            }
-
-            strContext += `${response}\n`;
-        }
-    }
-
-    return strContext;
 }
 
 /**
@@ -1058,7 +803,7 @@ export function activate(context: vscode.ExtensionContext) {
     const chat = vscode.chat.createChatParticipant(
         "connext-vc-copilot.chat",
         async (
-            request,
+            request: vscode.ChatRequest,
             context,
             response: vscode.ChatResponseStream,
             token
@@ -1148,13 +893,6 @@ export function activate(context: vscode.ExtensionContext) {
                 connextInfo(response);
                 return result;
             }
-
-            //let botFollowup = await generateBotFollowUp(getPrompt(globalState.lastPrompt, null, context, false), token);
-
-            //if (botFollowup != null) {
-            //    response.markdown(botFollowup);
-            //    return;
-            //}
 
             let socket;
             globalState.lastResponse = "";
@@ -1251,6 +989,8 @@ export function activate(context: vscode.ExtensionContext) {
                 id: generateRequestId(),
                 question: getPrompt(
                     globalState.lastPrompt,
+                    globalState.installations,
+                    request.references,
                     null,
                     context,
                     true
@@ -1363,6 +1103,8 @@ export function activate(context: vscode.ExtensionContext) {
                     globalState.NUM_FOLLOWUPS,
                     getPrompt(
                         globalState.lastPrompt,
+                        globalState.installations,
+                        undefined,
                         globalState.lastResponse,
                         context,
                         false
