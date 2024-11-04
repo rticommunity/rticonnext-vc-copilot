@@ -335,10 +335,6 @@ export function getPrompt(
                     }
                 }
 
-                if (rest_api) {
-                    response += EndAiRestMessage;
-                }
-
                 if (
                     response.includes(
                         globalThis.globalState.VALIDATE_CODE_HELP_STRING
@@ -358,6 +354,15 @@ export function getPrompt(
                         ""
                     );
                 }
+
+                if (response.trim() === BeginAiRestMessage.trim()) {
+                    response += "No response provided.\n";
+                }
+
+                if (rest_api) {
+                    response += EndAiRestMessage;
+                }
+
 
                 previousMessagesList.unshift(response);
                 totalLength += response.length;
@@ -420,9 +425,9 @@ export function getPrompt(
     }
 
     // Save prompt string into a file
-    //if (response === null) {
-    //    fs.writeFileSync("/Users/fernando/RTI/AI/demos/demo_plc/prompt.txt", promptWithContext);
-    //}
+    // if (response === null) {
+    //     fs.writeFileSync("/Users/fernando/RTI/AI/demos/demo_plc/prompt.txt", promptWithContext);
+    // }
 
     return promptWithContext;
 }

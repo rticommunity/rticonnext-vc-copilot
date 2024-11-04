@@ -89,6 +89,7 @@ interface IChatResult extends vscode.ChatResult {
     metadata: {
         command: string | undefined;
         error: boolean;
+        cancel: boolean;
     };
 }
 
@@ -819,14 +820,22 @@ export function activate(context: vscode.ExtensionContext) {
         "connext-vc-copilot.chat",
         async (
             request: vscode.ChatRequest,
-            context,
+            context: vscode.ChatContext,
             response: vscode.ChatResponseStream,
-            token
-        ): Promise<IChatResult> => {
+            token: vscode.CancellationToken
+        ): Promise<IChatResult> => {        
             let result: IChatResult = {
-                metadata: { command: request.command, error: false },
+                metadata: { command: request.command, error: false, cancel: false },
             };
 
+            if (token.isCancellationRequested) {
+                result.metadata.cancel = true;
+                return result;
+            }
+
+            // token.onCancellationRequested(() => {
+            // });
+        
             globalState.lastPrompt = request.prompt;
 
             if (
@@ -933,6 +942,7 @@ export function activate(context: vscode.ExtensionContext) {
                 });
 
                 socket.on("disconnect", () => {
+                    globalThis.globalState.socket = undefined;
                     globalThis.globalState.connectionReady = false;
                 });
 
@@ -949,10 +959,17 @@ export function activate(context: vscode.ExtensionContext) {
                 });
 
                 await waitForCondition(
-                    () => globalThis.globalState.connectionReady,
+                    () => globalThis.globalState.connectionReady || token.isCancellationRequested,
                     10000,
                     100
                 );
+
+                if (token.isCancellationRequested) {
+                    // No need to shutdown socket because we have not sent
+                    // any messages yet
+                    result.metadata.cancel = true;
+                    return result;
+                }
 
                 if (!globalThis.globalState.connectionReady) {
                     vscode.window.showErrorMessage(
@@ -1016,15 +1033,18 @@ export function activate(context: vscode.ExtensionContext) {
 
             await waitForCondition(
                 () =>
-                    responseReceived || !globalThis.globalState.connectionReady,
+                    responseReceived || !globalThis.globalState.connectionReady || token.isCancellationRequested,
                 120000,
                 100
             );
 
             if (!responseReceived) {
-                vscode.window.showErrorMessage(
-                    `${globalThis.globalState.connextProduct}: Request timed out.`
-                );
+                /* Cancelled or timed out */
+                if (!token.isCancellationRequested) {
+                    vscode.window.showErrorMessage(
+                        `${globalThis.globalState.connextProduct}: Request timed out.`
+                    );
+                }
             } else {
                 let validationPrompt = globalState.lastPrompt.includes(
                     globalState.VALIDATE_CODE_PROMPT_PREFIX
@@ -1093,6 +1113,20 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             socket.off("response");
+
+            if (token.isCancellationRequested) {
+                result.metadata.cancel = true;
+
+                /* 
+                 * Instead of closing the socket, we could send a message to 
+                 * the server to cancel the request. However, this flow is not
+                 * implemented in the server yet.
+                 */
+                socket.disconnect();
+                globalThis.globalState.socket = undefined;
+                globalThis.globalState.connectionReady = false
+            }
+
             return result;
         }
     );
@@ -1103,7 +1137,7 @@ export function activate(context: vscode.ExtensionContext) {
             context: vscode.ChatContext,
             token: vscode.CancellationToken
         ) {
-            if (result.metadata.error) {
+            if (result.metadata.error || result.metadata.cancel) {
                 return [];
             }
 
