@@ -576,16 +576,16 @@ function connextInfo(response: vscode.ChatResponseStream) {
     }
 }
 
+/**
+ * Logs out the user by deleting stored credentials and resetting global state.
+ *
+ * @param context - The VS Code extension context which provides access to secrets storage.
+ * @returns A promise that resolves when the logout process is complete.
+ */
 async function logout(context: vscode.ExtensionContext) {
-    await context.globalState.update(
-        globalThis.globalState.connextUsernameKey,
-        undefined
-    );
+    await context.secrets.delete(globalThis.globalState.connextUsernameKey);
     globalThis.globalState.storedUsername = undefined;
-    await context.globalState.update(
-        globalThis.globalState.connextPasswordKey,
-        undefined
-    );
+    await context.secrets.delete(globalThis.globalState.connextPasswordKey);
     globalThis.globalState.storedPassword = undefined;
     globalThis.globalState.accessCode = undefined;
 }
@@ -635,11 +635,11 @@ export function activate(context: vscode.ExtensionContext) {
             // Check if user provided both credentials
             if (username && password) {
                 // Store credentials in global state
-                await context.globalState.update(
+                await context.secrets.store(
                     globalThis.globalState.connextUsernameKey,
                     username
                 );
-                await context.globalState.update(
+                await context.secrets.store(
                     globalThis.globalState.connextPasswordKey,
                     password
                 );
@@ -787,12 +787,30 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    globalThis.globalState.storedUsername = context.globalState.get<string>(
-        globalThis.globalState.connextUsernameKey
-    );
-    globalThis.globalState.storedPassword = context.globalState.get<string>(
-        globalThis.globalState.connextPasswordKey
-    );
+    (async () => {
+        try {
+            // Delete non-secure keys that were used in previous releases
+            // if for some reason they are still stored
+            await context.globalState.update(
+                globalThis.globalState.connextUsernameKey,
+                undefined
+            );
+            await context.globalState.update(
+                globalThis.globalState.connextPasswordKey,
+                undefined
+            );
+
+            globalThis.globalState.storedUsername = await context.secrets.get(
+                globalThis.globalState.connextUsernameKey
+            );
+            globalThis.globalState.storedPassword = await context.secrets.get(
+                globalThis.globalState.connextPasswordKey
+            );
+        } catch (error) {
+            globalThis.globalState.storedUsername = undefined;
+            globalThis.globalState.storedPassword = undefined
+        }
+    })();
 
     let extensionContext = context;
 
