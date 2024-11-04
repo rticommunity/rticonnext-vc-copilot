@@ -19,6 +19,8 @@ import {
     Architecture,
     getConnextInstallations,
     runApplication,
+    setExtensionContextForInstallation,
+    setDefaultInstallation
 } from "./installation";
 import { getPrompt } from "./prompt";
 
@@ -605,6 +607,7 @@ async function logout(context: vscode.ExtensionContext) {
  * It also creates a chat participant for handling user queries and interacting with the Connext Intelligence Platform.
  */
 export function activate(context: vscode.ExtensionContext) {
+    setExtensionContextForInstallation(context);
     globalThis.globalState.extensionUri = context.extensionUri;
     globalThis.globalState.installations = getConnextInstallations();
 
@@ -772,18 +775,11 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            globalThis.globalState.installations.forEach((installation) => {
-                installation.default = false;
-
-                if (installation.directory === installation.directory) {
-                    installation.architectures.forEach((arch) => {
-                        arch.default = false;
-                    });
-                }
-            });
-
-            installation.default = true;
-            architecture.default = true;
+            setDefaultInstallation(
+                globalThis.globalState.installations,
+                installation,
+                architecture
+            );
 
             vscode.window.showInformationMessage(
                 `Selected ${installation.directory} (${architecture.name}) as default installation.`

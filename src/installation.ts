@@ -13,6 +13,26 @@ import * as fs from "fs";
 import { exec } from "child_process";
 
 /**
+ * Key used to store the default installation directory for Connext.
+ */
+const CONNEXT_DEFAULT_INSTALLATION_DIR_KEY = "connextDefaultInstallation";
+
+/**
+ * The key used to store and retrieve the default architecture setting for RTI Connext.
+ */
+const CONNEXT_DEFAULT_ARCHITECTURE_KEY = "connextDefaultArchitecture";
+
+/**
+ * A global variable to hold the context of the VS Code extension.
+ * This context is provided when the extension is activated and can be used
+ * throughout the extension's lifecycle to access global state, subscriptions,
+ * and other extension-specific resources.
+ * 
+ * @type {vscode.ExtensionContext | undefined}
+ */
+let EXTENSION_CONTEXT: vscode.ExtensionContext | undefined = undefined;
+
+/**
  * Represents a system architecture with a name, environment setup command, and a default flag.
  */
 export class Architecture {
@@ -232,13 +252,24 @@ export function getConnextInstallations(): Installation[] {
         return [];
     }
 
+    // Get the default installation directory and architecture from the global state
+    let defaultInstallationDir = undefined;
+
+    if (EXTENSION_CONTEXT != undefined) {
+        defaultInstallationDir = EXTENSION_CONTEXT.globalState.get(
+            CONNEXT_DEFAULT_INSTALLATION_DIR_KEY
+        );
+    }
+
     let count = 1;
 
     for (let dir of installationDirectories) {
         let architecturesNames = findArchitecture(dir);
         let defaultInstallation = false;
 
-        if (
+        if (defaultInstallationDir == dir) {
+            defaultInstallation = true;
+        } else if (
             process.env.NDDSHOME == dir ||
             installationDirectories.length == 1
         ) {
@@ -271,6 +302,14 @@ export function getConnextInstallations(): Installation[] {
                 shell = "bat";
             }
 
+            let defaultArchitecture = undefined;
+
+            if (EXTENSION_CONTEXT != undefined) {
+                defaultArchitecture = EXTENSION_CONTEXT.globalState.get(
+                    CONNEXT_DEFAULT_ARCHITECTURE_KEY
+                );
+            }
+
             let architectures: Architecture[] = [];
 
             for (let arch of architecturesNames) {
@@ -284,8 +323,12 @@ export function getConnextInstallations(): Installation[] {
 
                 let defaultArch = false;
 
-                if (defaultInstallation && architecturesNames.length == 1) {
-                    defaultArch = true;
+                if (defaultInstallation) {
+                    if (defaultArchitecture == arch) {
+                        defaultArch = true;
+                    } else if (architecturesNames.length == 1) {
+                        defaultArch = true;
+                    }
                 }
 
                 architectures.push(
@@ -352,4 +395,52 @@ export function runApplication(
             return;
         }
     });
+}
+
+/**
+ * Sets the extension context for installation.
+ *
+ * @param extensionContext - The context of the extension to be set.
+ */
+export function setExtensionContextForInstallation(
+    extensionContext: vscode.ExtensionContext
+) {
+    EXTENSION_CONTEXT = extensionContext;
+}
+
+/**
+ * Sets the default installation and architecture from the provided list of installations.
+ * 
+ * @param installations - An array of `Installation` objects representing the available installations.
+ * @param installation - The `Installation` object to be set as the default.
+ * @param architecture - The `Architecture` object to be set as the default for the specified installation.
+ */
+export function setDefaultInstallation(
+    installations: Installation[],
+    installation: Installation,
+    architecture: Architecture
+) {
+    installations.forEach((installation) => {
+        installation.default = false;
+
+        if (installation.directory === installation.directory) {
+            installation.architectures.forEach((arch) => {
+                arch.default = false;
+            });
+        }
+    });
+
+    installation.default = true;
+    architecture.default = true;
+
+    if (EXTENSION_CONTEXT != undefined) {
+        EXTENSION_CONTEXT.globalState.update(
+            CONNEXT_DEFAULT_INSTALLATION_DIR_KEY,
+            installation.directory
+        );
+        EXTENSION_CONTEXT.globalState.update(
+            CONNEXT_DEFAULT_ARCHITECTURE_KEY,
+            architecture.name
+        );
+    }
 }
