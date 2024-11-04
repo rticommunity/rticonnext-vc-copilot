@@ -50,6 +50,7 @@ class GlobalState {
         this.connextProduct = "Connext for Github Copilot";
         this.connextUsernameKey = "connextUsername";
         this.connextPasswordKey = "connextPassword";
+        //this.connextIntelligenceUrl = "ws://localhost:8502";
         this.connextIntelligenceUrl = "wss://sandbox-chatbot.rti.com";
         this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
         this.MAX_HISTORY_LENGTH = 65536;
