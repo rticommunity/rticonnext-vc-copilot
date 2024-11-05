@@ -101,7 +101,7 @@ export class SelectionPromptReference extends PromptReference {
 
         if (this.content === "") {
             if (location !== undefined) {
-                this.content = editor.document.getText(location.range);
+                this.content = editor.document.getText();
             }
         }
     }
