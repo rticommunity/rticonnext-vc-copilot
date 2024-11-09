@@ -612,12 +612,12 @@ export function activate(context: vscode.ExtensionContext) {
     globalThis.globalState.extensionUri = context.extensionUri;
     globalThis.globalState.installations = getConnextInstallations();
 
-    let config = vscode.workspace.getConfiguration('connext-vc-copilot');
+    let config = vscode.workspace.getConfiguration('connext');
 
     vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("connext-vc-copilot")) {
+        if (event.affectsConfiguration("connext")) {
             // Fetch the updated configuration
-            config = vscode.workspace.getConfiguration('connext-vc-copilot');
+            config = vscode.workspace.getConfiguration('connext');
         }
     });
 
@@ -846,6 +846,14 @@ export function activate(context: vscode.ExtensionContext) {
                 "intelligencePlatformUrl"
             );
 
+            let useAllOpenFiles: boolean | undefined = config.get(
+                "useAllOpenFilesForContext"
+            );
+
+            if (useAllOpenFiles == undefined) {
+                useAllOpenFiles = false;
+            }
+
             if (
                 globalState.selectedIntelligencePlatformUrl !=
                     intelligencePlatformUrl &&
@@ -942,6 +950,8 @@ export function activate(context: vscode.ExtensionContext) {
             } else if (request.command === "connextInfo") {
                 connextInfo(response);
                 return result;
+            } else if (request.command === "openFiles") {
+                useAllOpenFiles = true;
             }
 
             let socket;
@@ -1059,7 +1069,8 @@ export function activate(context: vscode.ExtensionContext) {
                     request.references,
                     null,
                     context,
-                    true
+                    true,
+                    useAllOpenFiles
                 ),
             };
 
@@ -1190,7 +1201,8 @@ export function activate(context: vscode.ExtensionContext) {
                         undefined,
                         globalState.lastResponse,
                         context,
-                        false
+                        false, /* rest_api */
+                        false /* includeAllOpenFiles */
                     ),
                     token
                 );

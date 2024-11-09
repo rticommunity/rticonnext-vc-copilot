@@ -91,6 +91,10 @@
                     {
                         "name": "connextInfo",
                         "description": "Show Connext installation(s) info"
+                    },
+                    {
+                        "name": "openFiles",
+                        "description": "Consider all open files for context"
                     }
                 ]
             }

@@ -20,11 +20,19 @@ export enum PromptReferenceKind {
     Unknown,
 }
 
+export enum PromptReferenceAttributes {
+    OpenFile,
+    UploadedFile,
+    SelectedText,
+}
+
 /**
  * Represents a reference to a document within a prompt, including its URI and content.
  */
 export class PromptReference {
     kind: PromptReferenceKind;
+
+    attributes: PromptReferenceAttributes[];
 
     /**
      * The URI of the reference.
@@ -45,6 +53,7 @@ export class PromptReference {
         this.uri = undefined;
         this.content = undefined;
         this.kind = PromptReferenceKind.Unknown;
+        this.attributes = [];
     }
 }
 
@@ -86,7 +95,7 @@ export class SelectionPromptReference extends PromptReference {
     /**
      * Creates an instance of `SelectionPromptReference`.
      */
-    constructor(location: vscode.Location | undefined = undefined) {
+    constructor(location: vscode.Location) {
         super();
         this.kind = PromptReferenceKind.Selection;
         const editor = vscode.window.activeTextEditor;
@@ -98,47 +107,75 @@ export class SelectionPromptReference extends PromptReference {
         const selection = editor.selection;
         this.uri = editor.document.uri;
         this.content = editor.document.getText(selection);
+        this.attributes.push(PromptReferenceAttributes.SelectedText);
 
         if (this.content === "") {
             if (location !== undefined) {
-                this.content = editor.document.getText();
+                this.content = editor.document.getText(location.range);
             }
         }
     }
 }
 
 function chatPromptReferenceToPromptReference(
-    references: readonly vscode.ChatPromptReference[]
+    references: readonly vscode.ChatPromptReference[] | undefined,
+    includeAllOpenFiles: boolean = false
 ): PromptReference[] {
     let promptReferences: PromptReference[] = [];
 
     try {
-        for (let ref of references) {
-            if (ref.value == undefined) {
-                continue;
-            }
-            if (
-                ref.value instanceof vscode.Uri &&
-                ref.value.scheme === "file"
-            ) {
-                let promptRef: FilePromptReference = new FilePromptReference(
-                    ref.value
-                );
-
-                if (
-                    promptRef.uri != undefined &&
-                    promptRef.content != undefined
-                ) {
-                    promptReferences.push(promptRef);
+        if (references !== undefined) {
+            for (let ref of references) {
+                if (ref.value == undefined) {
+                    continue;
                 }
-            } else if (ref.value instanceof vscode.Location) {
-                let promptRef: SelectionPromptReference =
-                    new SelectionPromptReference(ref.value);
-
                 if (
+                    ref.value instanceof vscode.Uri &&
+                    ref.value.scheme === "file"
+                ) {
+                    let promptRef: FilePromptReference = new FilePromptReference(
+                        ref.value
+                    );
+
+                    if (
+                        promptRef.uri != undefined &&
+                        promptRef.content != undefined
+                    ) {
+                        promptRef.attributes.push(PromptReferenceAttributes.UploadedFile);
+                        promptReferences.push(promptRef);
+                    }
+                } else if (ref.value instanceof vscode.Location) {
+                    let promptRef: SelectionPromptReference =
+                        new SelectionPromptReference(ref.value);
+
+                    if (
+                        promptRef.uri != undefined &&
+                        promptRef.content != undefined
+                    ) {
+                        promptReferences.push(promptRef);
+                    }
+                }
+            }
+        }
+
+        if (includeAllOpenFiles) {
+            const openFiles = getOpenFiles();
+            for (let file of openFiles) {
+                let promptRef: FilePromptReference | undefined = undefined;
+
+                try {
+                    promptRef =new FilePromptReference(
+                        vscode.Uri.file(file)
+                    );
+                } catch (error) {
+                    continue;
+                }
+
+                if (promptRef != undefined &&
                     promptRef.uri != undefined &&
                     promptRef.content != undefined
                 ) {
+                    promptRef.attributes.push(PromptReferenceAttributes.OpenFile);
                     promptReferences.push(promptRef);
                 }
             }
@@ -153,7 +190,8 @@ function chatPromptReferenceToPromptReference(
 function generatePromptWithWorkspaceInfo(
     prompt: string,
     installations: Installation[] | undefined,
-    references: readonly vscode.ChatPromptReference[] | undefined
+    references: readonly vscode.ChatPromptReference[] | undefined,
+    includeAllOpenFiles: boolean = false
 ): string {
 
     let defaultInstallation: [Installation, Architecture] | undefined =
@@ -165,8 +203,8 @@ function generatePromptWithWorkspaceInfo(
 
     let promptReferences: PromptReference[] = [];
 
-    if (references != undefined && references.length > 0) {
-        promptReferences = chatPromptReferenceToPromptReference(references);
+    if ((references != undefined && references.length > 0) || includeAllOpenFiles) {
+        promptReferences = chatPromptReferenceToPromptReference(references, includeAllOpenFiles);
     }
 
     // Return the original prompt if no references or default installations are provided
@@ -186,6 +224,7 @@ function generatePromptWithWorkspaceInfo(
         promptWithInfo += JSON.stringify(
             promptReferences.map((ref) => ({
                 kind: PromptReferenceKind[ref.kind],
+                attributes: ref.attributes.map((attr) => PromptReferenceAttributes[attr]),
                 uri: ref.uri?.fsPath,
                 content: ref.content,
             })),
@@ -216,39 +255,20 @@ function generatePromptWithWorkspaceInfo(
     return promptWithInfo;
 }
 
-/**
- * Retrieves the file paths of all visible text editors that belong to the current workspace.
- *
- * @returns {string[]} An array of file paths for the visible text editors that are part of the workspace.
- */
-function getVisibleWorkspaceFiles(): string[] {
-    const visibleEditors = vscode.window.visibleTextEditors;
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    let workspaceFiles: string[] = [];
 
-    if (workspaceFolders && visibleEditors.length > 0) {
-        // Get the list of workspace folders (as paths)
-        const workspacePaths = workspaceFolders.map(
-            (folder) => folder.uri.fsPath
-        );
+function getOpenFiles(): string[] {
+    const openEditors = vscode.workspace.textDocuments;
+    let openFiles: string[] = [];
 
-        // Loop through all visible editors
-        visibleEditors.forEach((editor) => {
-            const filePath = editor.document.uri.fsPath;
-
-            // Check if the file belongs to any workspace folder
-            const isInWorkspace = workspacePaths.some((workspacePath) =>
-                filePath.startsWith(workspacePath)
-            );
-
-            // If the file is in the workspace, add it to the list
-            if (isInWorkspace) {
-                workspaceFiles.push(filePath);
-            }
+    if (openEditors.length > 0) {
+        // Loop through all open files
+        openEditors.forEach((openFile) => {
+            const filePath = openFile.uri.fsPath;
+            openFiles.push(filePath);
         });
     }
 
-    return workspaceFiles;
+    return openFiles;
 }
 
 /**
@@ -262,6 +282,8 @@ function getVisibleWorkspaceFiles(): string[] {
  * @param references - The references.
  * @param response - The response.
  * @param context - The chat context containing the history of previous messages.
+ * @param rest_api - Whether to include the REST API tags in the prompt.
+ * @param includeAllOpenFiles - Whether to include all open files in the prompt.
  * @returns The chat history with the prompt and response.
  */
 export function getPrompt(
@@ -270,7 +292,8 @@ export function getPrompt(
     references: readonly vscode.ChatPromptReference[] | undefined,
     response: string | null,
     context: vscode.ChatContext,
-    rest_api: boolean = true
+    rest_api: boolean = true,
+    includeAllOpenFiles: boolean = false
 ): string {
     let previousMessages = context.history;
     const editor = vscode.window.activeTextEditor;
@@ -286,7 +309,7 @@ export function getPrompt(
     let promptWithInfo = null;
 
     if (prompt != null) {
-        promptWithInfo = generatePromptWithWorkspaceInfo(prompt, installations, references);
+        promptWithInfo = generatePromptWithWorkspaceInfo(prompt, installations, references, includeAllOpenFiles);
         limit = globalThis.globalState.MAX_HISTORY_LENGTH - promptWithInfo.length;
 
         if (limit < 0) {
@@ -425,9 +448,9 @@ export function getPrompt(
     }
 
     // Save prompt string into a file
-    // if (response === null) {
-    //     fs.writeFileSync("/Users/fernando/RTI/AI/demos/demo_plc/prompt.txt", promptWithContext);
-    // }
+    if (response === null) {
+         fs.writeFileSync("/Users/fernando/RTI/AI/demos/demo_plc/prompt.txt", promptWithContext);
+    }
 
     return promptWithContext;
 }

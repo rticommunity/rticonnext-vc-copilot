@@ -18,6 +18,17 @@ To access the Connext expert, you need the following:
 
 You will also need to install the GitHub Copilot Chat extension.
 
+To use the Connext for Github Copilot extension, you need to login to your 
+Connext Chatbot account.
+
+You can do that by opening the command palette and selecting "Connext: Login".
+
+You can log out of your Connext Chatbot account by opening the command palette 
+and selecting "Connext: Logout".
+
+If you do not log in, the Connext expert will ask you to log in when you try to 
+ask a question.
+
 ## Features
 
 **Chat View**: You can get assistance from the Connext expert directly in the 
@@ -39,7 +50,7 @@ one of the available options.
 
 ![Quick chat](images/context_menu.gif)
 
-## Commands
+## Chat Commands
 
 This extension allows invoking pre-defined commands from the chat window by 
 typing `@connext` followed by the `/<command>`.
@@ -49,6 +60,9 @@ The available commands are:
 * `/connextInfo`: Displays information about the Connext versions installed
     on your system. If there are multiple versions installed, the expert will
     ask you to choose which one you want to use as the default.
+* `/openFiles`: The Connext expert will consider all open files in the editor
+    as part of the question context. This setting can also be toggled on and off
+    in the extension settings.
 * `/startAdminConsole`: Opens RTI Admin Console using the default installation.
 * `/startSystemDesigner`: Opens the RTI System Designer using the default
     installation.
@@ -57,16 +71,3 @@ The available commands are:
 
 The commands that start tools will fail if there is no default installation
 configured.
-
-## Extension Settings
-
-To use the Connext for Github Copilot extension, you need to login to your
-Connext Chatbot account.
-
-You can do that by opening the command palette and selecting "Connext: Login".
-
-You can log out of your Connext Chatbot account by opening the command palette
-and selecting "Connext: Logout".
-
-If you do not log in, the Connext expert will ask you to log in when you try to
-ask a question.
