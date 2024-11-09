@@ -28,7 +28,6 @@ class GlobalState {
     readonly connextProduct: string;
     readonly connextUsernameKey: string;
     readonly connextPasswordKey: string;
-    readonly connextIntelligenceUrl: string;
     readonly connextAuth0Url: string;
     readonly MAX_HISTORY_LENGTH: number;
     readonly NUM_FOLLOWUPS: number;
@@ -43,6 +42,7 @@ class GlobalState {
     lastPrompt: string | null;
     lastResponse: string | null;
     installations: Installation[] | undefined;
+    selectedIntelligencePlatformUrl: string | undefined;
 
     socket: Socket | undefined;
     connectionReady: boolean;
@@ -52,8 +52,6 @@ class GlobalState {
         this.connextProduct = "Connext for Github Copilot";
         this.connextUsernameKey = "connextUsername";
         this.connextPasswordKey = "connextPassword";
-        //this.connextIntelligenceUrl = "ws://localhost:8502";
-        this.connextIntelligenceUrl = "wss://sandbox-chatbot.rti.com";
         this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
         this.MAX_HISTORY_LENGTH = 65536;
         this.NUM_FOLLOWUPS = 3;
@@ -71,6 +69,8 @@ class GlobalState {
 
         this.lastPrompt = null;
         this.lastResponse = null;
+
+        this.selectedIntelligencePlatformUrl = undefined;
     }
 }
 
@@ -612,6 +612,15 @@ export function activate(context: vscode.ExtensionContext) {
     globalThis.globalState.extensionUri = context.extensionUri;
     globalThis.globalState.installations = getConnextInstallations();
 
+    let config = vscode.workspace.getConfiguration('connext-vc-copilot');
+
+    vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration("connext-vc-copilot")) {
+            // Fetch the updated configuration
+            config = vscode.workspace.getConfiguration('connext-vc-copilot');
+        }
+    });
+
     // Register the login command
     let cidpLogin = vscode.commands.registerCommand(
         "connext-vc-copilot.login",
@@ -833,6 +842,23 @@ export function activate(context: vscode.ExtensionContext) {
                 return result;
             }
 
+            let intelligencePlatformUrl: string | undefined = config.get(
+                "intelligencePlatformUrl"
+            );
+
+            if (
+                globalState.selectedIntelligencePlatformUrl !=
+                    intelligencePlatformUrl &&
+                globalThis.globalState.socket != undefined
+            ) {
+                globalThis.globalState.socket.disconnect();
+                globalThis.globalState.socket = undefined;
+                globalThis.globalState.connectionReady = false;
+            }
+
+            globalState.selectedIntelligencePlatformUrl =
+                intelligencePlatformUrl;
+
             // token.onCancellationRequested(() => {
             // });
         
@@ -925,8 +951,16 @@ export function activate(context: vscode.ExtensionContext) {
                 globalThis.globalState.socket == undefined ||
                 !globalThis.globalState.connectionReady
             ) {
+                if (intelligencePlatformUrl === undefined) {
+                    vscode.window.showErrorMessage(
+                        `${globalThis.globalState.connextProduct}: Intelligence Platform URL is not set.`
+                    );
+                    result.metadata.error = true;
+                    return result;
+                }
+
                 globalThis.globalState.socket = io(
-                    globalThis.globalState.connextIntelligenceUrl,
+                    intelligencePlatformUrl,
                     {
                         extraHeaders: {
                             authorization: `bearer ${globalThis.globalState.accessCode}`,
