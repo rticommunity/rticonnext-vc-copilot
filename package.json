@@ -2,7 +2,7 @@
     "name": "connext-vc-copilot",
     "displayName": "Connext for Github Copilot",
     "description": "Bringing the power of Connext Chatbot to GitHub Copilot Chat",
-    "version": "0.0.12",
+    "version": "0.0.13",
     "publisher": "Real-Time Innovations",
     "icon": "images/bot_avatar.png",
     "repository": {

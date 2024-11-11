@@ -448,9 +448,9 @@ export function getPrompt(
     }
 
     // Save prompt string into a file
-    if (response === null) {
-         fs.writeFileSync("/Users/fernando/RTI/AI/demos/demo_plc/prompt.txt", promptWithContext);
-    }
+    // if (response === null) {
+    //     fs.writeFileSync("/Users/fernando/RTI/AI/demos/demo_plc/prompt.txt", promptWithContext);
+    // }
 
     return promptWithContext;
 }
