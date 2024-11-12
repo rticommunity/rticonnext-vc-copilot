@@ -12,6 +12,8 @@ import * as path from "path";
 import * as fs from "fs";
 import { exec } from "child_process";
 
+import { showErrorMessage } from "./utils";
+
 /**
  * Key used to store the default installation directory for Connext.
  */
@@ -389,7 +391,7 @@ export function runApplication(
     exec(command, (err, stdout, stderr) => {
         if (err) {
             // Handle the error
-            vscode.window.showErrorMessage(
+            showErrorMessage(
                 `Error running command: ${err.message}`
             );
             return;

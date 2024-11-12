@@ -20,12 +20,18 @@ import {
     getConnextInstallations,
     runApplication,
     setExtensionContextForInstallation,
-    setDefaultInstallation
+    setDefaultInstallation,
 } from "./installation";
+
+import {
+    showErrorMessage,
+    showInformationMessage,
+    CONNEXT_PRODUCT,
+} from "./utils";
+
 import { getPrompt } from "./prompt";
 
 class GlobalState {
-    readonly connextProduct: string;
     readonly connextUsernameKey: string;
     readonly connextPasswordKey: string;
     readonly connextAuth0Url: string;
@@ -49,7 +55,6 @@ class GlobalState {
 
     constructor() {
         // Set to displayName
-        this.connextProduct = "Connext for Github Copilot";
         this.connextUsernameKey = "connextUsername";
         this.connextPasswordKey = "connextPassword";
         this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
@@ -157,9 +162,7 @@ async function makeHttpRequest(
         const data = await response.json(); // Parse the JSON response
         return data;
     } catch (error) {
-        vscode.window.showErrorMessage(
-            `${globalThis.globalState.connextProduct}: Error making HTTP request: ${error}`
-        );
+        showErrorMessage(`Error making HTTP request: ${error}`);
         throw error;
     }
 }
@@ -612,12 +615,12 @@ export function activate(context: vscode.ExtensionContext) {
     globalThis.globalState.extensionUri = context.extensionUri;
     globalThis.globalState.installations = getConnextInstallations();
 
-    let config = vscode.workspace.getConfiguration('connext');
+    let config = vscode.workspace.getConfiguration("connext");
 
     vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration("connext")) {
             // Fetch the updated configuration
-            config = vscode.workspace.getConfiguration('connext');
+            config = vscode.workspace.getConfiguration("connext");
         }
     });
 
@@ -653,13 +656,11 @@ export function activate(context: vscode.ExtensionContext) {
                     globalThis.globalState.connextPasswordKey,
                     password
                 );
-                vscode.window.showInformationMessage(
-                    `${globalThis.globalState.connextProduct}: Credentials saved for user: ${username}`
+                showInformationMessage(
+                    `Credentials saved for user: ${username}`
                 );
             } else {
-                vscode.window.showErrorMessage(
-                    `${globalThis.globalState.connextProduct}: Both username and password are required.`
-                );
+                showErrorMessage(`Both username and password are required.`);
                 return false;
             }
 
@@ -676,9 +677,7 @@ export function activate(context: vscode.ExtensionContext) {
         "connext-vc-copilot.logout",
         async () => {
             await logout(context);
-            vscode.window.showInformationMessage(
-                `${globalThis.globalState.connextProduct}: Credentials have been cleared.`
-            );
+            showInformationMessage(`Credentials have been cleared.`);
         }
     );
 
@@ -781,7 +780,7 @@ export function activate(context: vscode.ExtensionContext) {
         "connext-vc-copilot.select-installation",
         (installation: Installation, architecture: Architecture) => {
             if (globalThis.globalState.installations == undefined) {
-                vscode.window.showErrorMessage(`No installations found.`);
+                showErrorMessage(`No installations found.`);
                 return;
             }
 
@@ -791,7 +790,7 @@ export function activate(context: vscode.ExtensionContext) {
                 architecture
             );
 
-            vscode.window.showInformationMessage(
+            showInformationMessage(
                 `Selected ${installation.directory} (${architecture.name}) as default installation.`
             );
         }
@@ -818,7 +817,7 @@ export function activate(context: vscode.ExtensionContext) {
             );
         } catch (error) {
             globalThis.globalState.storedUsername = undefined;
-            globalThis.globalState.storedPassword = undefined
+            globalThis.globalState.storedPassword = undefined;
         }
     })();
 
@@ -832,9 +831,13 @@ export function activate(context: vscode.ExtensionContext) {
             context: vscode.ChatContext,
             response: vscode.ChatResponseStream,
             token: vscode.CancellationToken
-        ): Promise<IChatResult> => {        
+        ): Promise<IChatResult> => {
             let result: IChatResult = {
-                metadata: { command: request.command, error: false, cancel: false },
+                metadata: {
+                    command: request.command,
+                    error: false,
+                    cancel: false,
+                },
             };
 
             if (token.isCancellationRequested) {
@@ -869,7 +872,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             // token.onCancellationRequested(() => {
             // });
-        
+
             globalState.lastPrompt = request.prompt;
 
             if (
@@ -881,8 +884,8 @@ export function activate(context: vscode.ExtensionContext) {
                 );
 
                 if (!success) {
-                    vscode.window.showInformationMessage(
-                        `Please log in to ${globalThis.globalState.connextProduct} to continue.`
+                    showInformationMessage(
+                        `Please log in to ${CONNEXT_PRODUCT} to continue.`
                     );
                     result.metadata.error = true;
                     return result;
@@ -921,8 +924,8 @@ export function activate(context: vscode.ExtensionContext) {
 
                 if (jsonResponse.error) {
                     await logout(extensionContext);
-                    vscode.window.showErrorMessage(
-                        `${globalThis.globalState.connextProduct}: Error getting access token: ${jsonResponse.error_description}`
+                    showErrorMessage(
+                        `Error getting access token: ${jsonResponse.error_description}`
                     );
                     result.metadata.error = true;
                     return result;
@@ -962,22 +965,17 @@ export function activate(context: vscode.ExtensionContext) {
                 !globalThis.globalState.connectionReady
             ) {
                 if (intelligencePlatformUrl === undefined) {
-                    vscode.window.showErrorMessage(
-                        `${globalThis.globalState.connextProduct}: Intelligence Platform URL is not set.`
-                    );
+                    showErrorMessage(`Intelligence Platform URL is not set.`);
                     result.metadata.error = true;
                     return result;
                 }
 
-                globalThis.globalState.socket = io(
-                    intelligencePlatformUrl,
-                    {
-                        extraHeaders: {
-                            authorization: `bearer ${globalThis.globalState.accessCode}`,
-                        },
-                        reconnectionAttempts: 3,
-                    }
-                );
+                globalThis.globalState.socket = io(intelligencePlatformUrl, {
+                    extraHeaders: {
+                        authorization: `bearer ${globalThis.globalState.accessCode}`,
+                    },
+                    reconnectionAttempts: 3,
+                });
 
                 socket = globalThis.globalState.socket;
 
@@ -992,18 +990,20 @@ export function activate(context: vscode.ExtensionContext) {
 
                 socket.on("connect_error", (err: Error) => {
                     if (err.message != "") {
-                        vscode.window.showErrorMessage(
-                            `Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server: ${err}`
+                        showErrorMessage(
+                            `Error connecting to Socket.IO server: ${err}`
                         );
                     } else {
-                        vscode.window.showErrorMessage(
-                            `Error connecting to ${globalThis.globalState.connextProduct} Socket.IO server`
+                        showErrorMessage(
+                            `Error connecting to Socket.IO server`
                         );
                     }
                 });
 
                 await waitForCondition(
-                    () => globalThis.globalState.connectionReady || token.isCancellationRequested,
+                    () =>
+                        globalThis.globalState.connectionReady ||
+                        token.isCancellationRequested,
                     10000,
                     100
                 );
@@ -1016,9 +1016,7 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 if (!globalThis.globalState.connectionReady) {
-                    vscode.window.showErrorMessage(
-                        `${globalThis.globalState.connextProduct}: Connection to the server failed.`
-                    );
+                    showErrorMessage(`Connection to the server failed.`);
                     result.metadata.error = true;
                     return result;
                 }
@@ -1035,8 +1033,8 @@ export function activate(context: vscode.ExtensionContext) {
                 try {
                     parsedData = JSON.parse(data);
                 } catch (error) {
-                    vscode.window.showErrorMessage(
-                        `${globalThis.globalState.connextProduct}: Failed to parse response from server: ${error}`
+                    showErrorMessage(
+                        `Failed to parse response from server: ${error}`
                     );
                     responseReceived = true;
                     result.metadata.error = true;
@@ -1045,8 +1043,8 @@ export function activate(context: vscode.ExtensionContext) {
 
                 // Check if there's an error in the response
                 if (parsedData.error) {
-                    vscode.window.showErrorMessage(
-                        `${globalThis.globalState.connextProduct}: Error processing request in server: ${parsedData.error_description}`
+                    showErrorMessage(
+                        `Error processing request in server: ${parsedData.error_description}`
                     );
                     responseReceived = true;
                     result.metadata.error = true;
@@ -1078,7 +1076,9 @@ export function activate(context: vscode.ExtensionContext) {
 
             await waitForCondition(
                 () =>
-                    responseReceived || !globalThis.globalState.connectionReady || token.isCancellationRequested,
+                    responseReceived ||
+                    !globalThis.globalState.connectionReady ||
+                    token.isCancellationRequested,
                 120000,
                 100
             );
@@ -1086,9 +1086,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (!responseReceived) {
                 /* Cancelled or timed out */
                 if (!token.isCancellationRequested) {
-                    vscode.window.showErrorMessage(
-                        `${globalThis.globalState.connextProduct}: Request timed out.`
-                    );
+                    showErrorMessage(`Request timed out.`);
                 }
             } else {
                 let validationPrompt = globalState.lastPrompt.includes(
@@ -1162,14 +1160,14 @@ export function activate(context: vscode.ExtensionContext) {
             if (token.isCancellationRequested) {
                 result.metadata.cancel = true;
 
-                /* 
-                 * Instead of closing the socket, we could send a message to 
+                /*
+                 * Instead of closing the socket, we could send a message to
                  * the server to cancel the request. However, this flow is not
                  * implemented in the server yet.
                  */
                 socket.disconnect();
                 globalThis.globalState.socket = undefined;
-                globalThis.globalState.connectionReady = false
+                globalThis.globalState.connectionReady = false;
             }
 
             return result;
@@ -1201,7 +1199,7 @@ export function activate(context: vscode.ExtensionContext) {
                         undefined,
                         globalState.lastResponse,
                         context,
-                        false, /* rest_api */
+                        false /* rest_api */,
                         false /* includeAllOpenFiles */
                     ),
                     token
