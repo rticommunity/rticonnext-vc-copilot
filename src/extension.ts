@@ -8,7 +8,6 @@
  */
 
 import * as vscode from "vscode";
-import fetch from "node-fetch";
 import io from "socket.io-client";
 import { Socket } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
@@ -26,10 +25,14 @@ import {
 import {
     showErrorMessage,
     showInformationMessage,
+    askQuestion,
+    makeHttpRequest,
     CONNEXT_PRODUCT,
 } from "./utils";
 
 import { getPrompt } from "./prompt";
+
+import { createExample } from "./project";
 
 class GlobalState {
     readonly connextUsernameKey: string;
@@ -146,28 +149,6 @@ async function getSecrets(filePath: string): Promise<Secrets> {
 }
 
 /**
- * Makes an HTTP request to the specified URI with the given options.
- *
- * @param uri - The URI to make the request to.
- * @param options - The options for the request.
- * @returns A promise that resolves to the response data as a string.
- * @throws If an error occurs during the request.
- */
-async function makeHttpRequest(
-    uri: string,
-    options: fetch.RequestInit
-): Promise<any> {
-    try {
-        const response = await fetch(uri, options);
-        const data = await response.json(); // Parse the JSON response
-        return data;
-    } catch (error) {
-        showErrorMessage(`Error making HTTP request: ${error}`);
-        throw error;
-    }
-}
-
-/**
  * Generates a unique request ID.
  *
  * @returns {string} A unique request ID.
@@ -200,36 +181,6 @@ async function waitForCondition(
         }
         await new Promise((resolve) => setTimeout(resolve, checkInterval));
     }
-}
-
-/**
- * Asks a question to a language model and returns the response.
- *
- * @param question - The question to ask the language model.
- * @param token - A cancellation token to cancel the request if needed.
- * @returns A promise that resolves to the response from the language model.
- */
-async function askQuestion(
-    question: string,
-    token: vscode.CancellationToken
-): Promise<string> {
-    const MODEL_SELECTOR: vscode.LanguageModelChatSelector = {
-        vendor: "copilot",
-        family: "gpt-4o",
-    };
-
-    const [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
-
-    const messages = [vscode.LanguageModelChatMessage.User(question)];
-
-    let response = "";
-
-    const chatResponse = await model.sendRequest(messages, {}, token);
-    for await (const fragment of chatResponse.text) {
-        response += fragment;
-    }
-
-    return response;
 }
 
 /**
@@ -922,7 +873,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const jsonResponse = await makeHttpRequest(uri, options);
 
-                if (jsonResponse.error) {
+                if (jsonResponse == undefined || jsonResponse.error) {
                     await logout(extensionContext);
                     showErrorMessage(
                         `Error getting access token: ${jsonResponse.error_description}`
@@ -955,6 +906,9 @@ export function activate(context: vscode.ExtensionContext) {
                 return result;
             } else if (request.command === "openFiles") {
                 useAllOpenFiles = true;
+            } else if (request.command === "newExample") {
+                await createExample(request.prompt, globalThis.globalState.installations, response, token);
+                return result;
             }
 
             let socket;

@@ -95,6 +95,10 @@
                     {
                         "name": "openFiles",
                         "description": "Consider all open files for context"
+                    },
+                    {
+                        "name": "newExample",
+                        "description": "Describe your type and provide programming language"
                     }
                 ]
             }
