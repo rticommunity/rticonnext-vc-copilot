@@ -907,7 +907,13 @@ export function activate(context: vscode.ExtensionContext) {
             } else if (request.command === "openFiles") {
                 useAllOpenFiles = true;
             } else if (request.command === "newExample") {
-                await createExample(request.prompt, globalThis.globalState.installations, response, token);
+                await createExample(
+                    request.prompt,
+                    globalThis.globalState.installations,
+                    response,
+                    globalThis.globalState.accessCode,
+                    token
+                );
                 return result;
             }
 

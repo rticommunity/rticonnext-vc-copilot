@@ -15,33 +15,46 @@ import {
     getDefaultInstallation,
 } from "./installation";
 
-import { askQuestion, askQuestionWithJsonResponse, showErrorMessage, showInformationMessage } from "./utils";
+
+import {
+    CONNEXT_PRODUCT,
+    askQuestionWithJsonResponse,
+    askQuestionToConnext,
+    runCommand
+} from "./utils";
+import { error } from "console";
 
 export async function createExample(
     prompt: string,
     installations: Installation[] | undefined,
     stream: vscode.ChatResponseStream,
+    accessCode: string | undefined,
     cancel_token: vscode.CancellationToken
 ): Promise<void> {
     const tempDir = undefined;
+    let ok = false;
+
+    if (accessCode == undefined) {
+        stream.markdown(`please log in to ${CONNEXT_PRODUCT} to continue.`);
+        return;
+    }
 
     try {
         // First check if there is a default connext installation and architecture
-        if (installations == undefined) {
-            stream.markdown(
-                "I couldn't find any default Connext DDS installation and architecture. Use the command /connextInfo to set them up."
-            );
-            return;
-        }
+        let defaultInstallation = undefined;
 
-        let defaultInstallation = getDefaultInstallation(installations);
+        if (installations != undefined) {
+            defaultInstallation = getDefaultInstallation(installations);
+        }
 
         if (defaultInstallation == undefined) {
             stream.markdown(
-                "I couldn't find any default Connext DDS installation and architecture. Use the command /connextInfo to set them up."
+                "I couldn't find any default Connext DDS installation and architecture. Use the command /connextInfo to set one."
             );
             return;
         }
+
+        stream.progress("Analyzing request ...");
 
         // Generate the project information
         const jsonProject = await askQuestionWithJsonResponse(
@@ -65,19 +78,86 @@ export async function createExample(
         );
 
         // Create a temporary directory for the content
-        const tempDir = await vscode.workspace.fs.createDirectory(
-            vscode.Uri.file(os.tmpdir())
+        let tempDir = vscode.Uri.file(os.tmpdir());
+        let tempDirWithWorkspace = vscode.Uri.joinPath(
+            tempDir,
+            jsonProject.workspace_name
         );
+        await vscode.workspace.fs.createDirectory(tempDirWithWorkspace);
 
         // Generate IDL file
-        
+        stream.progress("Generating IDL file ...");
 
+        let idlType = await askQuestionToConnext(
+            `Generate a IDL file based in the description in the following prompt.
+            Provide only the IDL.
+            Prompt: ${prompt}`,
+            accessCode,
+            cancel_token
+        );
+
+        if (idlType == undefined) {
+            throw new Error("Error generating IDL file.");
+        }
+
+        idlType = idlType.replace("```idl", "");
+        idlType = idlType.replace("```", "");
+
+        // Write IDL file to the temporary directory
+        const idlFile = vscode.Uri.joinPath(
+            tempDirWithWorkspace,
+            jsonProject.idl_file_name
+        );
+
+        await vscode.workspace.fs.writeFile(
+            idlFile,
+            new TextEncoder().encode(idlType)
+        );
+
+        // Generate code from IDL file
+        stream.progress("Generating code from IDL file ...");
+
+        let exampleArch = jsonProject.architecture;
+
+        if (jsonProject.language == "Python") {
+            exampleArch = "universal";
+        } else if (jsonProject.language == "C#") {
+            exampleArch = "net8";
+        }
+        
+        let command =
+            `${defaultInstallation[1].toolEnvCmd} && rtiddsgen
+                    -language ${jsonProject.language}
+                    -d ${tempDirWithWorkspace.fsPath}
+                    -example ${exampleArch} ${idlFile.fsPath}`;
+        runCommand(command);
+
+        // Get the list fo files from the temp directory
+        const files = await vscode.workspace.fs.readDirectory(tempDirWithWorkspace);
+
+        if (files == undefined) {
+            throw new Error("Error reading temporary directory.");
+        }
+
+        // Remove path from files
+        let filesWithoutPath: string[] = [];
+
+        for (let file of files) {
+            filesWithoutPath.push(file[0]);
+        }
 
         // Generate proposed directory structure and content
+        stream.progress("Creating directory structure ...");
+
+        let children = [];
+        for (let file of filesWithoutPath) {
+            children.push({ name: file });
+        }
+
         let tree: vscode.ChatResponseFileTree[] = [
             {
                 name: jsonProject.workspace_name,
-                children: [{ name: "README.md" }],
+                children: children,
             },
         ];
 
@@ -86,11 +166,20 @@ export async function createExample(
         stream.markdown(
             `Here's a proposed directory structure for the ${jsonProject.workspace_name} workspace:\n`
         );
-        stream.filetree(tree, baseLocation);
+        
+        stream.filetree(tree, tempDir);
+
+        stream.button({
+            command: "connext-vc-copilot.validate-code",
+            title: vscode.l10n.t("Accept and create workspace"),
+            arguments: [tempDir],
+        });
+
+        ok = true;
     } catch (error) {
-        stream.markdown("An error occurred while creating the example.");
+        stream.markdown("An error occurred while creating the example: " + error);
     } finally {
-        if (tempDir != undefined) {
+        if (!ok && tempDir != undefined) {
             await vscode.workspace.fs.delete(tempDir);
         }
     }

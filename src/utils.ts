@@ -9,6 +9,7 @@
 
 import * as vscode from "vscode";
 import fetch from "node-fetch";
+import { exec } from "child_process";
 
 export const CONNEXT_PRODUCT = "Connext for Github Copilot";
 
@@ -123,11 +124,13 @@ export async function makeHttpRequest(
  * Asks a question to the Connext Intelligence Platform.
  *
  * @param question - The question to ask.
+ * @param accessCode - The access code to authenticate with the Intelligence Platform.
  * @param token - A VS Code cancellation token.
  * @returns A promise that resolves to the response from the Intelligence Platform, or undefined if an error occurs or the URL is not set.
  */
 export async function askQuestionToConnext(
     question: string,
+    accessCode: string,
     token: vscode.CancellationToken
 ): Promise<string | undefined> {
     let config = vscode.workspace.getConfiguration("connext");
@@ -143,12 +146,18 @@ export async function askQuestionToConnext(
         return undefined;
     }
 
-    let uri = `${intelligencePlatformUrl}/api/v1/ask`;
+    let intelligencePlatformHttpUrl = intelligencePlatformUrl.replace(
+        "wss://",
+        "https://"
+    );
+
+    let uri = `${intelligencePlatformHttpUrl}/api/v1/ask`;
 
     let options: fetch.RequestInit = {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${accessCode}`,
         },
         body: JSON.stringify({
             question: question,
@@ -163,3 +172,59 @@ export async function askQuestionToConnext(
         return undefined;
     }
 }
+
+/**
+ * Asks a question to the Connext export and returns the response as a JSON object.
+ *
+ * @param question - The question to ask the Connext expert.
+ * @param accessCode - The access code to authenticate with the Intelligence Platform.
+ * @param token - A cancellation token to cancel the request if needed.
+ * @returns A promise that resolves to the response from the Connext expert as a JSON object.
+ */
+export async function askQuestionToConnextWithJsonResponse(
+    question: string,
+    accessCode: string,
+    token: vscode.CancellationToken
+): Promise<any | undefined> {
+    let response = await askQuestionToConnext(question, accessCode, token);
+
+    if (response == undefined) {
+        return undefined;
+    }
+
+    let jsonObject = undefined;
+
+    try {
+        response = response.replace("```json", "");
+        response = response.replace("```", "");
+        jsonObject = JSON.parse(response);
+    } catch (e: any) {
+        showErrorMessage(
+            `Error parsing JSON response: ${e.message}`
+        );
+        return undefined;
+    }
+
+    return jsonObject;
+}
+
+/**
+ * Executes a given command using the `child_process.exec` method.
+ *
+ * @param command - The command to be executed.
+ * @throws Will throw an error if the command execution fails.
+ */
+export function runCommand(
+    command: string,
+) {
+    // Use child_process.exec to run the external application
+    exec(command, (err, stdout, stderr) => {
+        if (err) {
+            // Handle the error
+            throw new Error(
+                `Error running command: ${err.message}`
+            );
+        }
+    });
+}
+
