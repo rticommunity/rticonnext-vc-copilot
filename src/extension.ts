@@ -32,7 +32,7 @@ import {
 
 import { getPrompt } from "./prompt";
 
-import { createExample } from "./project";
+import { createExample, initializeWorkspace } from "./project";
 
 class GlobalState {
     readonly connextUsernameKey: string;
@@ -677,6 +677,35 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(cidpValidate);
+
+    // Create workspace code command
+    let cidpWorkspace = vscode.commands.registerCommand(
+        "connext-vc-copilot.create-workspace",
+        async (
+            response: vscode.ChatResponseStream,
+            workspaceName: string,
+            tempDir: vscode.Uri
+        ) => {
+            const uri = await vscode.window.showOpenDialog({
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: false,
+                openLabel: "Select Parent Directory",
+            });
+
+            if (uri && uri.length > 0) {
+                const selectedPath = uri[0];
+                initializeWorkspace(
+                    response,
+                    workspaceName,
+                    selectedPath,
+                    tempDir
+                );
+            }
+        }
+    );
+
+    context.subscriptions.push(cidpWorkspace);
 
     // Run Admin Console
     let cidpRunAdmin = vscode.commands.registerCommand(

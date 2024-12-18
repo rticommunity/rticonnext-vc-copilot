@@ -9,7 +9,7 @@
 
 import * as vscode from "vscode";
 import fetch from "node-fetch";
-import { exec } from "child_process";
+import { exec, execSync } from "child_process";
 
 export const CONNEXT_PRODUCT = "Connext for Github Copilot";
 
@@ -209,9 +209,9 @@ export async function askQuestionToConnextWithJsonResponse(
 }
 
 /**
- * Executes a given command using the `child_process.exec` method.
+ * Executes a shell command asynchronously.
  *
- * @param command - The command to be executed.
+ * @param command - The command to execute.
  * @throws Will throw an error if the command execution fails.
  */
 export function runCommand(
@@ -227,4 +227,19 @@ export function runCommand(
         }
     });
 }
+
+/**
+ * Executes a shell command synchronously.
+ *
+ * @param command - The command to execute.
+ * @throws Will throw an error if the command execution fails.
+ */
+export function runCommandSync(command: string) {
+    try {
+        const output = execSync(command);
+    } catch (err : any) {
+        throw new Error(`Error running command: ${err.message}`);
+    }
+}
+
 

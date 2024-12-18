@@ -71,9 +71,7 @@ export class Architecture {
         this.default = defaultArch;
 
         /* Replace extension with bash */
-        this.toolEnvCmd = setEnvCmd
-            .replace("zsh", "bash")
-            .replace("tcsh", "bash");
+        this.toolEnvCmd = setEnvCmd;
     }
 }
 

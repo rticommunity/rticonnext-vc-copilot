@@ -45,6 +45,10 @@
                 "title": "Connext: Validate code"
             },
             {
+                "command": "connext-vc-copilot.create-workspace",
+                "title": "Connext: Create Workspace"
+            },
+            {
                 "command": "connext-vc-copilot.run-admin-console",
                 "title": "Connext: Run RTI Admin Console"
             },

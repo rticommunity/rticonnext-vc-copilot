@@ -15,12 +15,11 @@ import {
     getDefaultInstallation,
 } from "./installation";
 
-
 import {
     CONNEXT_PRODUCT,
     askQuestionWithJsonResponse,
     askQuestionToConnext,
-    runCommand
+    runCommandSync,
 } from "./utils";
 import { error } from "console";
 
@@ -58,9 +57,12 @@ export async function createExample(
 
         // Generate the project information
         const jsonProject = await askQuestionWithJsonResponse(
-            `Analyze the following prompt and provide the information needed to 
-            create a Connext DDS workspace in JSON format:
+            `Analyze the following prompt containing a type definition and a 
+            target language and provide the information needed to 
+            create a Visual Code Connext DDS workspace in JSON format:
+            
             Prompt: ${prompt}
+            
             Response:
             {
                 "workspace_name": "my_project",
@@ -69,11 +71,29 @@ export async function createExample(
                 "connext_path": "${defaultInstallation[0].directory}",
                 "architecture": "${defaultInstallation[1].name}"
             }
+            
             Instructions:
+            * "workspace_name" refers to the name of the workspace that will be 
+            created. Use a snake_case format name including the
+            type name.
             * "idl_file_name" refers to the name of the OMG IDL file that will be 
-            created
-            * "language" can have the following values: "C", "C++98", "Java", "C++11", "C#", "Python" or "unknown"
-            * If the "language" is not specified, set it to "unknown"`,
+            created. Use a snake_case format name including the
+            type name.
+            * "language" can have the following values: "C", "C++98", "Java", 
+            "C++11", "C#", "Python" or "unknown". Traditional C++ is C++98, 
+            while C++ or modern C++ is C++11.
+            * If the "language" is not specified, set it to "unknown"
+
+            For example, for the prompt "Temperature sensor in C++", the response 
+            would be:
+
+            {
+                "workspace_name": "temperature_sensor",
+                "language": "C++",
+                "idl_file_name": "temperature_sensor.idl",
+                "connext_path": "/path/to/rti_connext_dds",
+                "architecture": "C++11"
+            }`,
             cancel_token
         );
 
@@ -124,16 +144,17 @@ export async function createExample(
         } else if (jsonProject.language == "C#") {
             exampleArch = "net8";
         }
-        
-        let command =
-            `${defaultInstallation[1].toolEnvCmd} && rtiddsgen
-                    -language ${jsonProject.language}
-                    -d ${tempDirWithWorkspace.fsPath}
-                    -example ${exampleArch} ${idlFile.fsPath}`;
-        runCommand(command);
 
-        // Get the list fo files from the temp directory
-        const files = await vscode.workspace.fs.readDirectory(tempDirWithWorkspace);
+        let command = `${defaultInstallation[1].toolEnvCmd} && rtiddsgen \
+                    -language ${jsonProject.language} \
+                    -d ${tempDirWithWorkspace.fsPath} \
+                    -example ${exampleArch} ${idlFile.fsPath}`;
+        runCommandSync(command);
+
+        // Get the list of files from the temp directory
+        const files = await vscode.workspace.fs.readDirectory(
+            tempDirWithWorkspace
+        );
 
         if (files == undefined) {
             throw new Error("Error reading temporary directory.");
@@ -166,21 +187,64 @@ export async function createExample(
         stream.markdown(
             `Here's a proposed directory structure for the ${jsonProject.workspace_name} workspace:\n`
         );
-        
+
         stream.filetree(tree, tempDir);
 
         stream.button({
-            command: "connext-vc-copilot.validate-code",
+            command: "connext-vc-copilot.create-workspace",
             title: vscode.l10n.t("Accept and create workspace"),
-            arguments: [tempDir],
+            arguments: [
+                stream,
+                jsonProject.workspace_name,
+                tempDirWithWorkspace,
+            ],
         });
 
         ok = true;
     } catch (error) {
-        stream.markdown("An error occurred while creating the example: " + error);
+        stream.markdown(
+            "An error occurred while creating the example: " + error
+        );
     } finally {
         if (!ok && tempDir != undefined) {
-            await vscode.workspace.fs.delete(tempDir);
+            await vscode.workspace.fs.delete(tempDir, { recursive: true });
         }
+    }
+}
+
+/**
+ * Initializes the workspace by copying contents from the scratchpad directory to the parent directory.
+ *
+ * @param stream - The stream to which messages can be written.
+ * @param workspaceName - The name of the workspace directory to be created.
+ * @param parentDirUri - The URI of the parent directory where the contents will be copied. The
+ * workspace directory will be created here.
+ * @param scratchpadDirUri - The URI of the scratchpad directory from which the contents will be copied.
+ * @returns A promise that resolves when the copying is complete.
+ */
+export async function initializeWorkspace(
+    stream: vscode.ChatResponseStream,
+    workspaceName: string,
+    parentDirUri: vscode.Uri,
+    scratchpadDirUri: vscode.Uri
+): Promise<void> {
+    try {
+        // Create the workspace directory under workspaceName
+        const workspaceDirUri = vscode.Uri.joinPath(
+            parentDirUri,
+            workspaceName
+        );
+        await vscode.workspace.fs.createDirectory(workspaceDirUri);
+
+        // Copy to the scratchpad URI
+        await vscode.workspace.fs.copy(scratchpadDirUri, workspaceDirUri, {
+            overwrite: true,
+        });
+    } catch (error) {
+        stream.markdown(
+            "An error occurred while creating the example: " + error
+        );
+    } finally {
+        await vscode.workspace.fs.delete(scratchpadDirUri, { recursive: true });
     }
 }
