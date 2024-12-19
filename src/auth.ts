@@ -21,23 +21,28 @@ interface Auth0Config {
 
 export class Auth {
 
+    /**
+     * These fields need to be updated with your Auth0 configuration. They are
+     * not considered sensitive information and can be stored directly in the
+     * source code. Alternatively, you can store them in a configuration file
+     * (you will need functionality to read or parse this file) or environment
+     * variables.
+     */
     private static readonly auth0Config: Auth0Config = {
         audience: "https://chatbot.rti.com/api/v1",
         clientId: "deY3Vcmm0MWQBCsJTrCy4fZTTUO7u9gF",
         domain: "dev-6pfajgsd68a3srda.us.auth0.com",
     };
-    private static readonly port: number = 3000;
-    private static readonly redirectUri: string = `http://localhost:${this.port}/callback`;
 
     private static codeVerifier: string | undefined;
     private static context: vscode.ExtensionContext | undefined;
+    private static port: number = 50000; // ephemeral port
+    private static redirectUri: string = `http://localhost:${this.port}/callback`;
     private static state: string | undefined;
 
     public static async setup(context: vscode.ExtensionContext): Promise<void> {
         this.context = context;
-        if (this.context) {
-            await this.context.secrets.delete("accessToken");
-        } else {
+        if (!this.context) {
             throw new Error("Error logging out: context is not initialized.");
         }
     }
@@ -56,6 +61,13 @@ export class Auth {
             // Generate a random state
             this.state = this.generateState();
 
+            // Find an available port for the callback server and update the
+            // redirect URI
+            this.port = await this.findAvailablePort(this.port);
+            this.redirectUri = `http://localhost:${this.port}/callback`;
+
+            const authCodePromise = this.waitForAuthCode();
+
             // Build the Auth URL
             const authUrl = `https://${this.auth0Config.domain}/authorize?` + new URLSearchParams({
                 client_id: this.auth0Config.clientId,
@@ -72,7 +84,7 @@ export class Auth {
             await vscode.env.openExternal(vscode.Uri.parse(authUrl));
 
             // Wait for the callback to retrieve the authorization code
-            const { authCode, receivedState } = await this.waitForAuthCode();
+            const { authCode, receivedState } = await authCodePromise;
             if (!authCode) {
                 throw new Error("Authentication failed. No authorization code received.");
             }
@@ -118,8 +130,10 @@ export class Auth {
 
             const decodedToken: { exp: number } = jwtDecode(accessToken);
             const currentTime = Math.floor(Date.now() / 1000);
+            const margin = 60; // 1 min
 
-            if (decodedToken.exp < currentTime) {
+            if (currentTime + margin > decodedToken.exp) {
+            // If the token is expired, or about to expire, refresh it
                 accessToken = await this.refreshAccessToken();
             }
 
@@ -281,6 +295,33 @@ export class Auth {
             }
             throw error;
         }
+    }
+
+    /**
+     * Find an available port for the callback server.
+     * @param port The port to start looking for available ports.
+     * @returns The available port.
+     * @throws If no available port is found.
+     */
+    private static async findAvailablePort(port: number): Promise<number> {
+        if (port >= this.port + 10) {
+            throw new Error(`No available port found. Range (${this.port} - ${this.port + 10}) exhausted.`);
+        }
+
+        return new Promise((resolve) => {
+            const server = http.createServer();
+            server.listen(port, () => {
+                server.close(() => resolve(port));
+            });
+            server.on("error", (err) => {
+                if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
+                    console.log(`Port ${port} is in use. Trying next port...`);
+                    resolve(this.findAvailablePort(port + 1));
+                } else {
+                    throw new Error(`Error finding available port: ${err}`);
+                }
+            });
+        });
     }
 
 }
