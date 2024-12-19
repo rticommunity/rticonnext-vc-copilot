@@ -130,7 +130,7 @@ export class Auth {
 
             const decodedToken: { exp: number } = jwtDecode(accessToken);
             const currentTime = Math.floor(Date.now() / 1000);
-            const margin = 60; // 1 min
+            const margin = 600; // 10 min
 
             if (currentTime + margin > decodedToken.exp) {
             // If the token is expired, or about to expire, refresh it
