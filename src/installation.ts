@@ -11,9 +11,8 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import * as xml2js from 'xml2js';
-import { exec } from "child_process";
 
-import { showErrorMessage } from "./utils";
+import { showErrorMessage, runCommand } from "./utils";
 
 /**
  * Key used to store the default installation directory for Connext.
@@ -426,15 +425,13 @@ export function runApplication(
     }
 
     // Use child_process.exec to run the external application
-    exec(command, (err, stdout, stderr) => {
-        if (err) {
-            // Handle the error
-            showErrorMessage(
-                `Error running command: ${err.message}`
-            );
-            return;
-        }
-    });
+    try{
+        runCommand(command);
+    } catch (e: any) {
+        showErrorMessage(
+            `Error running command: ${e.message}`
+        );
+    }
 }
 
 /**
