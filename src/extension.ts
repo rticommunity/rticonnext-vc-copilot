@@ -494,6 +494,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
         response.markdown(`------------------------------------------------\n`);
         response.markdown(`## Installation ${count}\n`);
         response.markdown(`- *Directory:* \`${installation.directory}\`\n\n`);
+        response.markdown(`- *Version:* \`${installation.version}\`\n\n`);
         response.markdown(
             `- *Default:* \`${installation.default ? "Yes" : "No"}\`\n`
         );

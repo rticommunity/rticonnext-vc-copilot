@@ -209,6 +209,32 @@ export async function askQuestionToConnextWithJsonResponse(
 }
 
 /**
+ * Checks if the current operating system is Windows.
+ *
+ * @returns {boolean} `true` if the platform is Windows, otherwise `false`.
+ */
+export function isWindows() {
+    return process.platform === "win32";
+}
+
+/**
+ * Returns the default shell for the current operating system.
+ * 
+ * On Windows, it returns the value of the `ComSpec` environment variable if set,
+ * otherwise it defaults to "cmd.exe".
+ * 
+ * On Unix-like systems, it returns the value of the `SHELL` environment variable if set,
+ * otherwise it defaults to "/bin/bash".
+ * 
+ * @returns {string} The default shell for the current operating system.
+ */
+export function getDefaultShell() {
+    return isWindows()
+        ? process.env.ComSpec || "cmd.exe"
+        : process.env.SHELL || "/bin/bash";
+}
+
+/**
  * Executes a shell command asynchronously.
  *
  * @param command - The command to execute.
@@ -217,8 +243,10 @@ export async function askQuestionToConnextWithJsonResponse(
 export function runCommand(
     command: string,
 ) {
+    const shell = getDefaultShell();
+
     // Use child_process.exec to run the external application
-    exec(command, (err, stdout, stderr) => {
+    exec(command, { shell }, (err, stdout, stderr) => {
         if (err) {
             // Handle the error
             throw new Error(
@@ -236,7 +264,8 @@ export function runCommand(
  */
 export function runCommandSync(command: string) {
     try {
-        const output = execSync(command);
+        const shell = getDefaultShell();
+        const output = execSync(command, { shell });
     } catch (err : any) {
         throw new Error(`Error running command: ${err.message}`);
     }

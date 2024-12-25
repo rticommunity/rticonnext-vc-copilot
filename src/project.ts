@@ -9,6 +9,9 @@
 
 import * as vscode from "vscode";
 import * as os from "os";
+import * as nunjucks from 'nunjucks';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
     Installation,
     Architecture,
@@ -22,6 +25,32 @@ import {
     runCommandSync,
 } from "./utils";
 import { error } from "console";
+
+function generateCMakeLists(
+    workspaceUri: vscode.Uri,
+    configurationVariables: Map<string, string>
+) {
+    const data = {
+        cmake_version: "3.11",
+        connext_version: configurationVariables.get("connext_version"),
+        connext_path: configurationVariables.get("connext_path")
+    };
+
+    // Configure Nunjucks to load templates from the specified directory
+    nunjucks.configure(
+        path.resolve(workspaceUri.fsPath, "./resources/templates"),
+        {
+            autoescape: true,
+        }
+    );
+
+    // Render the template with data
+    const output = nunjucks.render("CMakeLists.txt.njk", data);
+
+    // Write the output to a file
+    const outputPath = path.resolve(__dirname, "../CMakeLists.txt");
+    fs.writeFileSync(outputPath, output);
+}
 
 export async function createExample(
     prompt: string,
@@ -145,6 +174,8 @@ export async function createExample(
             exampleArch = "net8";
         }
 
+        // if defaultInstallation[1].toolEnvCmd contains zsh
+        // then replace it with bash
         let command = `${defaultInstallation[1].toolEnvCmd} && rtiddsgen \
                     -language ${jsonProject.language} \
                     -d ${tempDirWithWorkspace.fsPath} \
@@ -240,6 +271,12 @@ export async function initializeWorkspace(
         await vscode.workspace.fs.copy(scratchpadDirUri, workspaceDirUri, {
             overwrite: true,
         });
+
+        // Open the workspace
+        await vscode.commands.executeCommand(
+            "vscode.openFolder",
+            workspaceDirUri
+        );
     } catch (error) {
         stream.markdown(
             "An error occurred while creating the example: " + error
