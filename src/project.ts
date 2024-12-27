@@ -25,6 +25,7 @@ import {
     runCommandSync,
 } from "./utils";
 import { error } from "console";
+import { json } from "stream/consumers";
 
 function generateCMakeLists(
     workspaceUri: vscode.Uri,
@@ -86,45 +87,54 @@ export async function createExample(
 
         // Generate the project information
         const jsonProject = await askQuestionWithJsonResponse(
-            `Analyze the following prompt containing a type definition and a 
-            target language and provide the information needed to 
-            create a Visual Code Connext DDS workspace in JSON format:
+            `Analyze the following input prompt containing a type definition 
+            and target language. Extract the necessary information to generate 
+            a JSON configuration for creating a Visual Code Connext DDS 
+            workspace.
+
+            Input Prompt: ${prompt}
             
-            Prompt: ${prompt}
-            
-            Response:
+            Expected JSON Response::
             {
-                "workspace_name": "my_project",
-                "language": "C++",
-                "idl_file_name": "my_project.idl"
-                "connext_path": "${defaultInstallation[0].directory}",
-                "architecture": "${defaultInstallation[1].name}"
+                "workspace_name": "<workspace_name>",
+                "language": "<language>",
+                "idl_file_name": "<idl_file_name>"
             }
             
             Instructions:
-            * "workspace_name" refers to the name of the workspace that will be 
-            created. Use a snake_case format name including the
-            type name.
-            * "idl_file_name" refers to the name of the OMG IDL file that will be 
-            created. Use a snake_case format name including the
-            type name.
-            * "language" can have the following values: "C", "C++98", "Java", 
-            "C++11", "C#", "Python" or "unknown". Traditional C++ is C++98, 
-            while C++ or modern C++ is C++11.
-            * If the "language" is not specified, set it to "unknown"
 
-            For example, for the prompt "Temperature sensor in C++", the response 
-            would be:
+            1) Workspace Name (workspace_name):
+            * Use the type name from the prompt.
+            * Format is in snake_case.
+
+            2) IDL File Name (idl_file_name):
+            * Use the type name from the prompt, followed by .idl.
+            * Format is in snake_case.
+
+            3) Language (language):
+            * Extract the programming language mentioned in the prompt.
+            * Supported values: "C", "C++98", "C++11", "Java", "C#", or "Python".
+            * Use the following mappings:
+            - "C++" -> "C++11"
+            - "traditional C++" -> "C++98"
+            - "modern C++" -> "C++11"
+            * If the language is not specified, set it to "C++11".
+
+            Example Prompt and Response:
+
+            Input Prompt: "Temperature sensor in C++"
 
             {
                 "workspace_name": "temperature_sensor",
-                "language": "C++",
-                "idl_file_name": "temperature_sensor.idl",
-                "connext_path": "/path/to/rti_connext_dds",
-                "architecture": "C++11"
+                "language": "C++11",
+                "idl_file_name": "temperature_sensor.idl"
             }`,
             cancel_token
         );
+
+        jsonProject["connext_path"] = defaultInstallation[0].directory;
+        jsonProject["architecture"] = defaultInstallation[1].name;
+        jsonProject["connext_version"] = defaultInstallation[0].version;
 
         // Create a temporary directory for the content
         let tempDir = vscode.Uri.file(os.tmpdir());
@@ -190,6 +200,24 @@ export async function createExample(
         if (files == undefined) {
             throw new Error("Error reading temporary directory.");
         }
+
+        // Delete files starting with makefile or README
+        const filteredFiles = files.filter(([fileName]) => {
+            const lowerFileName = fileName.toLowerCase();
+            if (lowerFileName.startsWith('makefile') || lowerFileName.startsWith('readme')) {
+                try {
+                    const fileUri = vscode.Uri.joinPath(tempDirWithWorkspace, fileName);
+                    vscode.workspace.fs.delete(fileUri);
+                    return false; // exclude from filtered results
+                } catch (error) {
+                    throw new Error("Error deleting unnecessary files.");
+                }
+            }
+            return true; // keep non-matching files
+        });
+
+        files.length = 0;
+        filteredFiles.forEach((file) => files.push(file));
 
         // Remove path from files
         let filesWithoutPath: string[] = [];
