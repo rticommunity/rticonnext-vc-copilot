@@ -33,6 +33,7 @@ function generateCMakeLists(
 ) {
     const data = {
         cmake_version: "3.11",
+        workspace_name: configurationVariables.get("workspace_name"),
         connext_version: configurationVariables.get("connext_version"),
         connext_path: configurationVariables.get("connext_path")
     };
@@ -138,10 +139,21 @@ export async function createExample(
 
         // Create a temporary directory for the content
         let tempDir = vscode.Uri.file(os.tmpdir());
+        const tempWorkspaceName = `${jsonProject.workspace_name}`;
         let tempDirWithWorkspace = vscode.Uri.joinPath(
             tempDir,
-            jsonProject.workspace_name
+            tempWorkspaceName
         );
+    
+        // Delete the temporary directory if it already exists
+        try {
+            await vscode.workspace.fs.delete(tempDirWithWorkspace, {
+                recursive: true,
+            });
+        } catch (error) {
+            // Ignore error if the directory does not exist
+        }
+        
         await vscode.workspace.fs.createDirectory(tempDirWithWorkspace);
 
         // Generate IDL file
@@ -241,8 +253,6 @@ export async function createExample(
             },
         ];
 
-        const baseLocation = vscode.Uri.file(os.homedir());
-
         stream.markdown(
             `Here's a proposed directory structure for the ${jsonProject.workspace_name} workspace:\n`
         );
@@ -275,7 +285,7 @@ export async function createExample(
  * Initializes the workspace by copying contents from the scratchpad directory to the parent directory.
  *
  * @param stream - The stream to which messages can be written.
- * @param workspaceName - The name of the workspace directory to be created.
+ * @param configurationVariables - The configuration variables used to generate the workspace.
  * @param parentDirUri - The URI of the parent directory where the contents will be copied. The
  * workspace directory will be created here.
  * @param scratchpadDirUri - The URI of the scratchpad directory from which the contents will be copied.
@@ -283,12 +293,19 @@ export async function createExample(
  */
 export async function initializeWorkspace(
     stream: vscode.ChatResponseStream,
-    workspaceName: string,
+    configurationVariables: Map<string, string>,
     parentDirUri: vscode.Uri,
     scratchpadDirUri: vscode.Uri
 ): Promise<void> {
     try {
+        if (configurationVariables.get("workspace_name") == undefined) {
+            throw new Error("Workspace name not found.");
+        }
+
         // Create the workspace directory under workspaceName
+        const workspaceName = configurationVariables.get(
+            "workspace_name"
+        ) as string;
         const workspaceDirUri = vscode.Uri.joinPath(
             parentDirUri,
             workspaceName

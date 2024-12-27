@@ -684,7 +684,7 @@ export function activate(context: vscode.ExtensionContext) {
         "connext-vc-copilot.create-workspace",
         async (
             response: vscode.ChatResponseStream,
-            workspaceName: string,
+            configurationVariables: Map<string, string>,
             tempDir: vscode.Uri
         ) => {
             const uri = await vscode.window.showOpenDialog({
@@ -698,7 +698,7 @@ export function activate(context: vscode.ExtensionContext) {
                 const selectedPath = uri[0];
                 initializeWorkspace(
                     response,
-                    workspaceName,
+                    configurationVariables,
                     selectedPath,
                     tempDir
                 );
