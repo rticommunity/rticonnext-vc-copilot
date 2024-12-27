@@ -23,45 +23,135 @@ import {
     askQuestionWithJsonResponse,
     askQuestionToConnext,
     runCommandSync,
+    isWindows,
+    isLinux,
+    isMac
 } from "./utils";
 import { error } from "console";
 import { json } from "stream/consumers";
 
-function generateCMakeLists(
+async function generateCMakeFiles(
     workspaceUri: vscode.Uri,
-    configurationVariables: Map<string, string>
+    extensionPath: string,
+    configurationVariables: any
 ) {
-    const data = {
+    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(".idl", "");
+
+    let data = {
         cmake_version: "3.11",
-        workspace_name: configurationVariables.get("workspace_name"),
-        connext_version: configurationVariables.get("connext_version"),
-        connext_path: configurationVariables.get("connext_path")
+        workspace_name: configurationVariables.workspace_name,
+        connext_version: configurationVariables.connext_version,
+        connext_path: configurationVariables.connext_path,
+        idl_file_name: idl_file_name_no_ext,
+        sources_pub: "",
+        sources_sub: "",
+        connext_libs: "",
+        generator: "",
+        mi_mode: ""
     };
+
+    if (configurationVariables.language == "C") {
+        let common_sources = `    ${data.idl_file_name}.c\n`;
+        common_sources += `    ${data.idl_file_name}Plugin.c\n`;
+        common_sources += `    ${data.idl_file_name}Support.c\n`;
+
+        data.sources_pub = `${data.idl_file_name}_publisher.c\n`;
+        data.sources_pub += common_sources;
+
+        data.sources_sub = `${data.idl_file_name}_subscriber.c\n`;
+        data.sources_sub += common_sources;
+
+        data.connext_libs = "RTIConnextDDS::c_api";
+    } else if (configurationVariables.language == "C++98") {
+        let common_sources = `    ${data.idl_file_name}.cxx\n`;
+        common_sources += `    ${data.idl_file_name}Plugin.cxx\n`;
+        common_sources += `    ${data.idl_file_name}Support.cxx\n`;
+
+        data.sources_pub = `${data.idl_file_name}_publisher.cxx\n`;
+        data.sources_pub += common_sources;
+
+        data.sources_sub = `${data.idl_file_name}_subscriber.cxx\n`;
+        data.sources_sub += common_sources;
+
+        data.connext_libs = "RTIConnextDDS::cpp_api";
+    } else if (configurationVariables.language == "C++11") {
+        let common_sources = `    ${data.idl_file_name}.cxx\n`;
+        common_sources += `    ${data.idl_file_name}Plugin.cxx\n`;
+
+        data.sources_pub = `${data.idl_file_name}_publisher.cxx\n`;
+        data.sources_pub += common_sources;
+
+        data.sources_sub = `${data.idl_file_name}_subscriber.cxx\n`;
+        data.sources_sub += common_sources;
+
+        data.connext_libs = "RTIConnextDDS::cpp2_api";
+    }
+
+    let cmakeConfig = vscode.workspace.getConfiguration("cmake");
+
+    if (cmakeConfig.get("generator") != undefined) {
+        data.generator = cmakeConfig.get("generator") as string;
+    } else if (isWindows()) {
+        data.generator = "Visual Studio";
+    } else {
+        data.generator = "Unix Makefiles";
+    }
+
+    if (isMac()) {
+        data.mi_mode = "lldb";
+    } else if (isLinux()) {
+        data.mi_mode = "gdb";
+    } else if (isWindows()) {
+        data.mi_mode = "cppvsdbg";
+    }
 
     // Configure Nunjucks to load templates from the specified directory
     nunjucks.configure(
-        path.resolve(workspaceUri.fsPath, "./resources/templates"),
+        path.resolve(extensionPath, "resources/templates"),
         {
             autoescape: true,
         }
     );
 
     // Render the template with data
-    const output = nunjucks.render("CMakeLists.txt.njk", data);
+    const outputCMake = nunjucks.render("CMakeLists.txt.njk", data);
 
-    // Write the output to a file
-    const outputPath = path.resolve(__dirname, "../CMakeLists.txt");
-    fs.writeFileSync(outputPath, output);
+    const outputCMakePath = path.resolve(workspaceUri.fsPath, "CMakeLists.txt");
+    fs.writeFileSync(outputCMakePath, outputCMake);
+
+    const outputPreset = nunjucks.render("CMakePresets.json.njk", data);
+
+    const outputPresetPath = path.resolve(
+        workspaceUri.fsPath,
+        "CMakePresets.json"
+    );
+    fs.writeFileSync(outputPresetPath, outputPreset);
+
+    const outputLaunch = nunjucks.render("launch.json.njk", data);
+
+    let vscodeUri = vscode.Uri.joinPath(workspaceUri, ".vscode");
+    await vscode.workspace.fs.createDirectory(vscodeUri);
+
+    const outputLaunchPath = path.resolve(
+        workspaceUri.fsPath,
+        ".vscode",
+        "launch.json"
+    );
+    
+    fs.writeFileSync(outputLaunchPath, outputLaunch);
+
 }
 
 export async function createExample(
     prompt: string,
+    extensionPath: string,
     installations: Installation[] | undefined,
     stream: vscode.ChatResponseStream,
     accessCode: string | undefined,
     cancel_token: vscode.CancellationToken
 ): Promise<void> {
     const tempDir = undefined;
+    const tempDirWithWorkspace = undefined;
     let ok = false;
 
     if (accessCode == undefined) {
@@ -204,6 +294,8 @@ export async function createExample(
                     -example ${exampleArch} ${idlFile.fsPath}`;
         runCommandSync(command);
 
+        generateCMakeFiles(tempDirWithWorkspace, extensionPath, jsonProject);
+
         // Get the list of files from the temp directory
         const files = await vscode.workspace.fs.readDirectory(
             tempDirWithWorkspace
@@ -264,7 +356,7 @@ export async function createExample(
             title: vscode.l10n.t("Accept and create workspace"),
             arguments: [
                 stream,
-                jsonProject.workspace_name,
+                jsonProject,
                 tempDirWithWorkspace,
             ],
         });
@@ -275,8 +367,8 @@ export async function createExample(
             "An error occurred while creating the example: " + error
         );
     } finally {
-        if (!ok && tempDir != undefined) {
-            await vscode.workspace.fs.delete(tempDir, { recursive: true });
+        if (!ok && tempDirWithWorkspace != undefined) {
+            await vscode.workspace.fs.delete(tempDirWithWorkspace, { recursive: true });
         }
     }
 }
@@ -293,22 +385,15 @@ export async function createExample(
  */
 export async function initializeWorkspace(
     stream: vscode.ChatResponseStream,
-    configurationVariables: Map<string, string>,
+    configurationVariables: any,
     parentDirUri: vscode.Uri,
     scratchpadDirUri: vscode.Uri
 ): Promise<void> {
     try {
-        if (configurationVariables.get("workspace_name") == undefined) {
-            throw new Error("Workspace name not found.");
-        }
-
         // Create the workspace directory under workspaceName
-        const workspaceName = configurationVariables.get(
-            "workspace_name"
-        ) as string;
         const workspaceDirUri = vscode.Uri.joinPath(
             parentDirUri,
-            workspaceName
+            configurationVariables.workspace_name
         );
         await vscode.workspace.fs.createDirectory(workspaceDirUri);
 

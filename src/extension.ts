@@ -562,7 +562,7 @@ async function logout(context: vscode.ExtensionContext) {
  *
  * It also creates a chat participant for handling user queries and interacting with the Connext Intelligence Platform.
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     setExtensionContextForInstallation(context);
     globalThis.globalState.extensionUri = context.extensionUri;
     globalThis.globalState.installations = getConnextInstallations();
@@ -684,7 +684,7 @@ export function activate(context: vscode.ExtensionContext) {
         "connext-vc-copilot.create-workspace",
         async (
             response: vscode.ChatResponseStream,
-            configurationVariables: Map<string, string>,
+            configurationVariables: any,
             tempDir: vscode.Uri
         ) => {
             const uri = await vscode.window.showOpenDialog({
@@ -939,6 +939,7 @@ export function activate(context: vscode.ExtensionContext) {
             } else if (request.command === "newExample") {
                 await createExample(
                     request.prompt,
+                    extensionContext.extensionPath,
                     globalThis.globalState.installations,
                     response,
                     globalThis.globalState.accessCode,

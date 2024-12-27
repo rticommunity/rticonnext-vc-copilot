@@ -2,28 +2,22 @@ cmake_minimum_required(VERSION {{ cmake_version }})
 project ( {{ workspace_name }} )
 set(CMAKE_MODULE_PATH
     ${CMAKE_MODULE_PATH}
-    "{{ connext_path }} /resource/cmake")
+    "{{ connext_path }}/resource/cmake")
 
 find_package(RTIConnextDDS EXACT "{{ connext_version }}" REQUIRED)
 
 set(SOURCES_PUB
-    "{{ idl_file_name }}_publisher.{{ lang_ext }}"
-    "{{ idl_file_name }}.{{ lang_ext }}"
-    "{{ idl_file_name }}Plugin.{{ lang_ext }}"
-    "{{ idl_file_name }}Support.{{ lang_ext }}"
+    {{ sources_pub }}
 )
 
 add_executable({{ idl_file_name }}_publisher ${SOURCES_PUB})
 target_link_libraries({{ idl_file_name }}_publisher
     PUBLIC
-        RTIConnextDDS::cpp_api
+        {{ connext_libs }}
 )
 
 set(SOURCES_SUB
-    "{{ idl_file_name }}_subscriber.{{ lang_ext }}"
-    "{{ idl_file_name }}.{{ lang_ext }}"
-    "{{ idl_file_name }}Plugin.{{ lang_ext }}"
-    "{{ idl_file_name }}Support.{{ lang_ext }}"
+    {{ sources_sub }}
 )
 
 add_executable({{ idl_file_name }}_subscriber ${SOURCES_SUB})

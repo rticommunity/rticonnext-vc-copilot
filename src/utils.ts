@@ -218,6 +218,24 @@ export function isWindows() {
 }
 
 /**
+ * Checks if the current operating system is Mac.
+ *
+ * @returns {boolean} `true` if the platform is Mac, otherwise `false`.
+ */
+export function isMac() {
+    return process.platform === "darwin";
+}
+
+/**
+ * Checks if the current operating system is Linux.
+ *
+ * @returns {boolean} `true` if the platform is Linux, otherwise `false`.
+ */
+export function isLinux() {
+    return process.platform === "linux";
+}
+
+/**
  * Returns the default shell for the current operating system.
  * 
  * On Windows, it returns the value of the `ComSpec` environment variable if set,
