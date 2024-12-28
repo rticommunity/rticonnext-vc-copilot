@@ -12,7 +12,20 @@
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
-            "environment": [],
+            "environment": [
+                {
+{% if platform === "mac" %}
+                    "name": "DYLD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% elif platform === "linux" %}
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% else %}
+                    "name": "PATH",
+                    "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+{% endif %}
+                }
+            ],
             "externalConsole": false,
             "MIMode": "{{ mi_mode }}"
         },
@@ -24,7 +37,20 @@
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
-            "environment": [],
+            "environment": [
+                {
+{% if platform === "mac" %}
+                    "name": "DYLD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% elif platform === "linux" %}
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% else %}
+                    "name": "PATH",
+                    "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+{% endif %}
+                }
+            ],
             "externalConsole": false,
             "MIMode": "{{ mi_mode }}"
         }

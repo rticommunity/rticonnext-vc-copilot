@@ -289,4 +289,29 @@ export function runCommandSync(command: string) {
     }
 }
 
+/**
+ * Recursively reads the contents of a directory and returns a list of file paths and their types.
+ *
+ * @param dir - The URI of the directory to read.
+ * @param relativePath - The relative path from the initial directory (default is an empty string).
+ * @returns A promise that resolves to an array of tuples, each containing a file path and its type.
+ */
+export async function readDirectoryRecursive(dir: vscode.Uri, relativePath: string = ''): Promise<[string, vscode.FileType][]> {
+    let results: [string, vscode.FileType][] = [];
+    const entries = await vscode.workspace.fs.readDirectory(dir);
+
+    for (const [name, type] of entries) {
+        const fullPath = relativePath ? `${relativePath}/${name}` : name;
+        
+        if (type === vscode.FileType.Directory) {
+            const subDirUri = vscode.Uri.joinPath(dir, name);
+            const subDirFiles = await readDirectoryRecursive(subDirUri, fullPath);
+            results = results.concat(subDirFiles);
+        }
+        
+        results.push([fullPath, type]);
+    }
+
+    return results;
+}
 

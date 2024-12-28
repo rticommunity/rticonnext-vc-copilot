@@ -1,13 +1,29 @@
+{% if language === "C" %}
+{% set ext = "c" %}
+{% else %}
+{% set ext = "cxx" %}
+{% endif %}
+
 cmake_minimum_required(VERSION {{ cmake_version }})
 project ( {{ workspace_name }} )
 set(CMAKE_MODULE_PATH
     ${CMAKE_MODULE_PATH}
     "{{ connext_path }}/resource/cmake")
 
+{% if language === "C++11" %}
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+{% endif %}
+
 find_package(RTIConnextDDS EXACT "{{ connext_version }}" REQUIRED)
 
 set(SOURCES_PUB
-    {{ sources_pub }}
+    {{ idl_file_name }}_publisher.{{ ext }}
+    {{ idl_file_name }}.{{ ext }}
+    {{ idl_file_name }}Plugin.{{ ext }}
+{% if language !== "C++11" %}
+    {{ idl_file_name }}Support.{{ ext }}
+{% endif %}
 )
 
 add_executable({{ idl_file_name }}_publisher ${SOURCES_PUB})
@@ -17,7 +33,12 @@ target_link_libraries({{ idl_file_name }}_publisher
 )
 
 set(SOURCES_SUB
-    {{ sources_sub }}
+    {{ idl_file_name }}_subscriber.{{ ext }}
+    {{ idl_file_name }}.{{ ext }}
+    {{ idl_file_name }}Plugin.{{ ext }}
+{% if language !== "C++11" %}
+    {{ idl_file_name }}Support.{{ ext }}
+{% endif %}
 )
 
 add_executable({{ idl_file_name }}_subscriber ${SOURCES_SUB})

@@ -25,7 +25,8 @@ import {
     runCommandSync,
     isWindows,
     isLinux,
-    isMac
+    isMac,
+    readDirectoryRecursive
 } from "./utils";
 import { error } from "console";
 import { json } from "stream/consumers";
@@ -42,48 +43,20 @@ async function generateCMakeFiles(
         workspace_name: configurationVariables.workspace_name,
         connext_version: configurationVariables.connext_version,
         connext_path: configurationVariables.connext_path,
+        language: configurationVariables.language,
         idl_file_name: idl_file_name_no_ext,
-        sources_pub: "",
-        sources_sub: "",
-        connext_libs: "",
-        generator: "",
-        mi_mode: ""
+        connext_libs: "RTIConnextDDS::c_api",
+        generator: "Unix Makefiles",
+        mi_mode: "lldb",
+        platform: "linux",
+        architecture: configurationVariables.architecture
     };
 
     if (configurationVariables.language == "C") {
-        let common_sources = `    ${data.idl_file_name}.c\n`;
-        common_sources += `    ${data.idl_file_name}Plugin.c\n`;
-        common_sources += `    ${data.idl_file_name}Support.c\n`;
-
-        data.sources_pub = `${data.idl_file_name}_publisher.c\n`;
-        data.sources_pub += common_sources;
-
-        data.sources_sub = `${data.idl_file_name}_subscriber.c\n`;
-        data.sources_sub += common_sources;
-
         data.connext_libs = "RTIConnextDDS::c_api";
     } else if (configurationVariables.language == "C++98") {
-        let common_sources = `    ${data.idl_file_name}.cxx\n`;
-        common_sources += `    ${data.idl_file_name}Plugin.cxx\n`;
-        common_sources += `    ${data.idl_file_name}Support.cxx\n`;
-
-        data.sources_pub = `${data.idl_file_name}_publisher.cxx\n`;
-        data.sources_pub += common_sources;
-
-        data.sources_sub = `${data.idl_file_name}_subscriber.cxx\n`;
-        data.sources_sub += common_sources;
-
         data.connext_libs = "RTIConnextDDS::cpp_api";
     } else if (configurationVariables.language == "C++11") {
-        let common_sources = `    ${data.idl_file_name}.cxx\n`;
-        common_sources += `    ${data.idl_file_name}Plugin.cxx\n`;
-
-        data.sources_pub = `${data.idl_file_name}_publisher.cxx\n`;
-        data.sources_pub += common_sources;
-
-        data.sources_sub = `${data.idl_file_name}_subscriber.cxx\n`;
-        data.sources_sub += common_sources;
-
         data.connext_libs = "RTIConnextDDS::cpp2_api";
     }
 
@@ -99,10 +72,13 @@ async function generateCMakeFiles(
 
     if (isMac()) {
         data.mi_mode = "lldb";
+        data.platform = "mac";
     } else if (isLinux()) {
         data.mi_mode = "gdb";
+        data.platform = "linux";
     } else if (isWindows()) {
         data.mi_mode = "cppvsdbg";
+        data.platform = "windows";
     }
 
     // Configure Nunjucks to load templates from the specified directory
@@ -294,12 +270,10 @@ export async function createExample(
                     -example ${exampleArch} ${idlFile.fsPath}`;
         runCommandSync(command);
 
-        generateCMakeFiles(tempDirWithWorkspace, extensionPath, jsonProject);
+        await generateCMakeFiles(tempDirWithWorkspace, extensionPath, jsonProject);
 
         // Get the list of files from the temp directory
-        const files = await vscode.workspace.fs.readDirectory(
-            tempDirWithWorkspace
-        );
+        const files = await readDirectoryRecursive(tempDirWithWorkspace);
 
         if (files == undefined) {
             throw new Error("Error reading temporary directory.");
