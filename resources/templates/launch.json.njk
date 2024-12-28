@@ -19,7 +19,7 @@
                     "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
 {% elif platform === "linux" %}
                     "name": "LD_LIBRARY_PATH",
-                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
 {% else %}
                     "name": "PATH",
                     "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
@@ -44,7 +44,7 @@
                     "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
 {% elif platform === "linux" %}
                     "name": "LD_LIBRARY_PATH",
-                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
 {% else %}
                     "name": "PATH",
                     "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
