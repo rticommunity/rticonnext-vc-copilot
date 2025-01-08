@@ -315,3 +315,20 @@ export async function readDirectoryRecursive(dir: vscode.Uri, relativePath: stri
     return results;
 }
 
+/**
+ * Returns a string representing the current platform.
+ *
+ * @returns {string} - The platform string, which can be "windows", "mac", "linux", or "unknown".
+ */
+export function getPlatformStr() {
+    if (isWindows()) {
+        return "windows";
+    } else if (isMac()) {
+        return "mac";
+    } else if (isLinux()) {
+        return "linux";
+    } else {
+        return "unknown";
+    }
+}
+

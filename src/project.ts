@@ -26,7 +26,8 @@ import {
     isWindows,
     isLinux,
     isMac,
-    readDirectoryRecursive
+    readDirectoryRecursive,
+    getPlatformStr
 } from "./utils";
 import { error } from "console";
 import { json } from "stream/consumers";
@@ -48,7 +49,7 @@ async function generateCMakeFiles(
         connext_libs: "RTIConnextDDS::c_api",
         generator: "Unix Makefiles",
         mi_mode: "lldb",
-        platform: "linux",
+        platform: getPlatformStr(),
         architecture: configurationVariables.architecture
     };
 
@@ -72,13 +73,10 @@ async function generateCMakeFiles(
 
     if (isMac()) {
         data.mi_mode = "lldb";
-        data.platform = "mac";
     } else if (isLinux()) {
         data.mi_mode = "gdb";
-        data.platform = "linux";
     } else if (isWindows()) {
         data.mi_mode = "cppvsdbg";
-        data.platform = "windows";
     }
 
     // Configure Nunjucks to load templates from the specified directory
@@ -116,6 +114,53 @@ async function generateCMakeFiles(
     
     fs.writeFileSync(outputLaunchPath, outputLaunch);
 
+}
+
+async function generateJavaProjectFiles(
+    workspaceUri: vscode.Uri,
+    extensionPath: string,
+    configurationVariables: any
+) {
+    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(".idl", "");
+
+    let data = {
+        connext_path: configurationVariables.connext_path,
+        architecture: configurationVariables.architecture,
+        publisher_class: configurationVariables.publisher_class,
+        subscriber_class: configurationVariables.subscriber_class,
+        platform: getPlatformStr()
+    };
+
+    // Configure Nunjucks to load templates from the specified directory
+    nunjucks.configure(
+        path.resolve(extensionPath, "resources/templates"),
+        {
+            autoescape: true,
+        }
+    );
+
+    // Render the template with data
+    const outputLaunch = nunjucks.render("launch.java.json.njk", data);
+    let vscodeUri = vscode.Uri.joinPath(workspaceUri, ".vscode");
+    await vscode.workspace.fs.createDirectory(vscodeUri);
+
+    const outputLaunchPath = path.resolve(
+        workspaceUri.fsPath,
+        ".vscode",
+        "launch.json"
+    );
+    
+    fs.writeFileSync(outputLaunchPath, outputLaunch);
+
+    const outputSettings = nunjucks.render("settings.java.json.njk", data);
+
+    const outputSettingsPath = path.resolve(
+        workspaceUri.fsPath,
+        ".vscode",
+        "settings.json"
+    );
+    
+    fs.writeFileSync(outputSettingsPath, outputSettings);
 }
 
 export async function createExample(
@@ -270,7 +315,47 @@ export async function createExample(
                     -example ${exampleArch} ${idlFile.fsPath}`;
         runCommandSync(command);
 
-        await generateCMakeFiles(tempDirWithWorkspace, extensionPath, jsonProject);
+        if (
+            jsonProject.language == "C" ||
+            jsonProject.language == "C++98" ||
+            jsonProject.language == "C++11"
+        ) {
+            await generateCMakeFiles(
+                tempDirWithWorkspace,
+                extensionPath,
+                jsonProject
+            );
+        } else if (jsonProject.language == "Java") {
+            const files = await readDirectoryRecursive(tempDirWithWorkspace);
+
+            if (files == undefined) {
+                throw new Error("Error reading temporary directory.");
+            }
+
+            // Find a file with name finished in Publisher.java
+            let publisherJavaFile = files.find(([fileName]) => {
+                return fileName.endsWith("Publisher.java");
+            });
+            let subscriberJavaFile = files.find(([fileName]) => {
+                return fileName.endsWith("Subscriber.java");
+            });
+
+            if (publisherJavaFile == undefined || subscriberJavaFile == undefined) {
+                throw new Error("Error finding Java files.");
+            }
+
+            // Get filename without extension and path
+            publisherJavaFile[0] = publisherJavaFile[0].replace(".java", "");
+            subscriberJavaFile[0] = subscriberJavaFile[0].replace(".java", "");
+
+            jsonProject["publisher_class"] = publisherJavaFile[0];
+            jsonProject["subscriber_class"] = subscriberJavaFile[0];
+
+            await generateJavaProjectFiles(
+                tempDirWithWorkspace,
+                extensionPath,
+                jsonProject);
+        }
 
         // Get the list of files from the temp directory
         const files = await readDirectoryRecursive(tempDirWithWorkspace);
@@ -282,9 +367,19 @@ export async function createExample(
         // Delete files starting with makefile or README
         const filteredFiles = files.filter(([fileName]) => {
             const lowerFileName = fileName.toLowerCase();
-            if (lowerFileName.startsWith('makefile') || lowerFileName.startsWith('readme')) {
+            if (
+                lowerFileName.startsWith("makefile") ||
+                lowerFileName.startsWith("readme") ||
+                lowerFileName.endsWith(".launch") ||
+                lowerFileName.endsWith("build.xml") ||
+                lowerFileName.endsWith(".classpath") ||
+                lowerFileName.endsWith(".project")
+            ) {
                 try {
-                    const fileUri = vscode.Uri.joinPath(tempDirWithWorkspace, fileName);
+                    const fileUri = vscode.Uri.joinPath(
+                        tempDirWithWorkspace,
+                        fileName
+                    );
                     vscode.workspace.fs.delete(fileUri);
                     return false; // exclude from filtered results
                 } catch (error) {
