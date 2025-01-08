@@ -32,6 +32,23 @@ import {
 import { error } from "console";
 import { json } from "stream/consumers";
 
+/**
+ * Generates CMake configuration files for a given workspace.
+ *
+ * This function creates the following files in the specified workspace:
+ * - `CMakeLists.txt`
+ * - `CMakePresets.json`
+ * - `.vscode/launch.json`
+ *
+ * The function uses Nunjucks templates to render the content of these files
+ * based on the provided configuration variables.
+ *
+ * @param workspaceUri - The URI of the workspace where the files will be generated.
+ * @param extensionPath - The path to the extension's resources directory.
+ * @param configurationVariables - An object containing configuration variables.
+ *
+ * @returns A promise that resolves when the files have been successfully generated.
+ */
 async function generateCMakeFiles(
     workspaceUri: vscode.Uri,
     extensionPath: string,
@@ -116,13 +133,23 @@ async function generateCMakeFiles(
 
 }
 
+/**
+ * Generates Java project files for a given workspace.
+ *
+ * This function creates and configures the necessary files for a Java project
+ * in the specified workspace. It uses Nunjucks templates to generate the
+ * `launch.json` and `settings.json` files based on the provided configuration
+ * variables.
+ *
+ * @param workspaceUri - The URI of the workspace where the project files will be generated.
+ * @param extensionPath - The path to the extension's resources directory.
+ * @param configurationVariables - An object containing configuration variables.
+ */
 async function generateJavaProjectFiles(
     workspaceUri: vscode.Uri,
     extensionPath: string,
     configurationVariables: any
 ) {
-    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(".idl", "");
-
     let data = {
         connext_path: configurationVariables.connext_path,
         architecture: configurationVariables.architecture,
@@ -162,6 +189,39 @@ async function generateJavaProjectFiles(
     
     fs.writeFileSync(outputSettingsPath, outputSettings);
 }
+
+async function generatePythonProjectFiles(
+    workspaceUri: vscode.Uri,
+    extensionPath: string,
+    configurationVariables: any
+) {
+    let data = {
+        publisher_file: configurationVariables.publisher_file,
+        subscriber_file: configurationVariables.subscriber_file
+    };
+
+    // Configure Nunjucks to load templates from the specified directory
+    nunjucks.configure(
+        path.resolve(extensionPath, "resources/templates"),
+        {
+            autoescape: true,
+        }
+    );
+
+    // Render the template with data
+    const outputLaunch = nunjucks.render("launch.python.json.njk", data);
+    let vscodeUri = vscode.Uri.joinPath(workspaceUri, ".vscode");
+    await vscode.workspace.fs.createDirectory(vscodeUri);
+
+    const outputLaunchPath = path.resolve(
+        workspaceUri.fsPath,
+        ".vscode",
+        "launch.json"
+    );
+    
+    fs.writeFileSync(outputLaunchPath, outputLaunch);
+}
+
 
 export async function createExample(
     prompt: string,
@@ -355,6 +415,32 @@ export async function createExample(
                 tempDirWithWorkspace,
                 extensionPath,
                 jsonProject);
+        } else if (jsonProject.language == "Python") {
+            const files = await readDirectoryRecursive(tempDirWithWorkspace);
+
+            let publisherPythonFile = files.find(([fileName]) => {
+                return fileName.endsWith("publisher.py");
+            });
+            let subscriberPythonFile = files.find(([fileName]) => {
+                return fileName.endsWith("subscriber.py");
+            });
+
+            if (publisherPythonFile == undefined || subscriberPythonFile == undefined) {
+                throw new Error("Error finding Python files.");
+            }
+
+            // Get filename without extension and path
+            publisherPythonFile[0] = publisherPythonFile[0].replace(".py", "");
+            subscriberPythonFile[0] = subscriberPythonFile[0].replace(".py", "");
+
+            jsonProject["publisher_file"] = publisherPythonFile[0];
+            jsonProject["subscriber_file"] = subscriberPythonFile[0];
+
+            await generatePythonProjectFiles(
+                tempDirWithWorkspace,
+                extensionPath,
+                jsonProject);
+
         }
 
         // Get the list of files from the temp directory
