@@ -445,4 +445,27 @@ export async function getHighestDotnetFramework(): Promise<string | undefined> {
     return undefined;
 }
 
+/**
+ * Retrieves the file extension associated with a given programming language.
+ *
+ * @param language - The name of the programming language.
+ * @returns The file extension corresponding to the specified language, or `undefined` if the language is not recognized.
+ */
+export function getLanguageExtension(language: string): string | undefined {
+    const extensionMap: { [key: string]: string } = {
+        "Java": "java",
+        "C#": "cs",
+        "C": "c",
+        "C++98": "cxx",
+        "C++11": "cxx",
+        "Python": "py"
+    };
+
+    if (language in extensionMap) {
+        return extensionMap[language];
+    }
+
+    return undefined;
+}
+
 

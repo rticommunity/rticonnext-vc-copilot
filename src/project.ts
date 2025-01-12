@@ -28,7 +28,8 @@ import {
     isMac,
     readDirectoryRecursive,
     getPlatformStr,
-    getHighestDotnetFramework
+    getHighestDotnetFramework,
+    getLanguageExtension
 } from "./utils";
 import { error } from "console";
 import { json } from "stream/consumers";
@@ -272,6 +273,53 @@ async function generateCSProjectFiles(
     fs.writeFileSync(outputLaunchPath, outputLaunch);
 }
 
+export async function getPublisherAndSubscriberFile(
+        workspaceUri: vscode.Uri,
+        language: string): Promise<string[]>
+{
+    let ext = getLanguageExtension(language);
+
+    if (ext == undefined) {
+        throw new Error("Unexpected language.");
+    }
+
+    const files = await readDirectoryRecursive(workspaceUri);
+
+    if (files == undefined) {
+        throw new Error("Error reading temporary directory.");
+    }
+
+    let publisherFile = undefined;
+    let subscriberFile = undefined;
+
+    if (language == "Python" ||
+        language == "C" ||
+        language == "C++98" ||
+        language == "C++11"
+    ) {
+        publisherFile = files.find(([fileName]) => {
+            return fileName.endsWith(`_publisher.${ext}`);
+        });
+        subscriberFile = files.find(([fileName]) => {
+            return fileName.endsWith(`_subscriber.${ext}`);
+        });
+    } else {
+        publisherFile = files.find(([fileName]) => {
+            return fileName.endsWith(`Publisher.${ext}`);
+        });
+        subscriberFile = files.find(([fileName]) => {
+            return fileName.endsWith(`Subscriber.${ext}`);
+        });
+    }
+
+    if (publisherFile == undefined || subscriberFile == undefined) {
+        throw new Error(`Error finding ${language} files.`);
+    }
+
+    return [publisherFile[0], subscriberFile[0]];
+    
+}
+
 export async function createExample(
     prompt: string,
     extensionPath: string,
@@ -431,6 +479,10 @@ export async function createExample(
                     -example ${exampleArch} ${idlFile.fsPath}`;
         runCommandSync(command);
 
+        let pubSubFiles = await getPublisherAndSubscriberFile(
+            tempDirWithWorkspace,
+            jsonProject.language);
+
         if (
             jsonProject.language == "C" ||
             jsonProject.language == "C++98" ||
@@ -442,55 +494,16 @@ export async function createExample(
                 jsonProject
             );
         } else if (jsonProject.language == "Java") {
-            const files = await readDirectoryRecursive(tempDirWithWorkspace);
-
-            if (files == undefined) {
-                throw new Error("Error reading temporary directory.");
-            }
-
-            // Find a file with name finished in Publisher.java
-            let publisherJavaFile = files.find(([fileName]) => {
-                return fileName.endsWith("Publisher.java");
-            });
-            let subscriberJavaFile = files.find(([fileName]) => {
-                return fileName.endsWith("Subscriber.java");
-            });
-
-            if (publisherJavaFile == undefined || subscriberJavaFile == undefined) {
-                throw new Error("Error finding Java files.");
-            }
-
-            // Get filename without extension and path
-            publisherJavaFile[0] = publisherJavaFile[0].replace(".java", "");
-            subscriberJavaFile[0] = subscriberJavaFile[0].replace(".java", "");
-
-            jsonProject["publisher_class"] = publisherJavaFile[0];
-            jsonProject["subscriber_class"] = subscriberJavaFile[0];
+            jsonProject["publisher_class"] = pubSubFiles[0].replace(".java", "");
+            jsonProject["subscriber_class"] = pubSubFiles[1].replace(".java", "");
 
             await generateJavaProjectFiles(
                 tempDirWithWorkspace,
                 extensionPath,
                 jsonProject);
         } else if (jsonProject.language == "Python") {
-            const files = await readDirectoryRecursive(tempDirWithWorkspace);
-
-            let publisherPythonFile = files.find(([fileName]) => {
-                return fileName.endsWith("publisher.py");
-            });
-            let subscriberPythonFile = files.find(([fileName]) => {
-                return fileName.endsWith("subscriber.py");
-            });
-
-            if (publisherPythonFile == undefined || subscriberPythonFile == undefined) {
-                throw new Error("Error finding Python files.");
-            }
-
-            // Get filename without extension and path
-            publisherPythonFile[0] = publisherPythonFile[0].replace(".py", "");
-            subscriberPythonFile[0] = subscriberPythonFile[0].replace(".py", "");
-
-            jsonProject["publisher_file"] = publisherPythonFile[0];
-            jsonProject["subscriber_file"] = subscriberPythonFile[0];
+            jsonProject["publisher_file"] = pubSubFiles[0].replace(".py", "");
+            jsonProject["subscriber_file"] = pubSubFiles[1].replace(".py", "");
 
             await generatePythonProjectFiles(
                 tempDirWithWorkspace,
@@ -505,6 +518,9 @@ export async function createExample(
         } else {
             throw new Error("Unexpected language.");
         }
+
+        // Customizing application
+        stream.progress("Customizing application ...");
 
         // Get the list of files from the temp directory
         const files = await readDirectoryRecursive(tempDirWithWorkspace);
