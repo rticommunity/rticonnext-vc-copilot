@@ -27,7 +27,8 @@ import {
     isLinux,
     isMac,
     readDirectoryRecursive,
-    getPlatformStr
+    getPlatformStr,
+    getHighestDotnetFramework
 } from "./utils";
 import { error } from "console";
 import { json } from "stream/consumers";
@@ -190,6 +191,21 @@ async function generateJavaProjectFiles(
     fs.writeFileSync(outputSettingsPath, outputSettings);
 }
 
+/**
+ * Generates Python project files for a given workspace.
+ *
+ * This function configures Nunjucks to load templates from a specified directory,
+ * renders the template with provided data, and writes the output to the `.vscode/launch.json` file
+ * in the given workspace.
+ *
+ * @param workspaceUri - The URI of the workspace where the project files will be generated.
+ * @param extensionPath - The path to the extension's resources directory.
+ * @param configurationVariables - An object containing configuration variables, including:
+ *   - `publisher_file`: The path to the publisher file.
+ *   - `subscriber_file`: The path to the subscriber file.
+ *
+ * @returns A promise that resolves when the project files have been successfully generated.
+ */
 async function generatePythonProjectFiles(
     workspaceUri: vscode.Uri,
     extensionPath: string,
@@ -222,6 +238,39 @@ async function generatePythonProjectFiles(
     fs.writeFileSync(outputLaunchPath, outputLaunch);
 }
 
+async function generateCSProjectFiles(
+    workspaceUri: vscode.Uri,
+    extensionPath: string,
+    configurationVariables: any
+) {
+    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(".idl", "");
+
+    let data = {
+        idl_file_name: idl_file_name_no_ext,
+        example_architecture: configurationVariables.example_architecture,
+    };
+
+    // Configure Nunjucks to load templates from the specified directory
+    nunjucks.configure(
+        path.resolve(extensionPath, "resources/templates"),
+        {
+            autoescape: true,
+        }
+    );
+
+    // Render the template with data
+    const outputLaunch = nunjucks.render("launch.net.json.njk", data);
+    let vscodeUri = vscode.Uri.joinPath(workspaceUri, ".vscode");
+    await vscode.workspace.fs.createDirectory(vscodeUri);
+
+    const outputLaunchPath = path.resolve(
+        workspaceUri.fsPath,
+        ".vscode",
+        "launch.json"
+    );
+    
+    fs.writeFileSync(outputLaunchPath, outputLaunch);
+}
 
 export async function createExample(
     prompt: string,
@@ -364,8 +413,15 @@ export async function createExample(
         if (jsonProject.language == "Python") {
             exampleArch = "universal";
         } else if (jsonProject.language == "C#") {
-            exampleArch = "net8";
+            let sdk = await getHighestDotnetFramework()
+
+            if (sdk == undefined) {
+                sdk = "net8";
+            }
+            exampleArch = sdk;
         }
+
+        jsonProject["example_architecture"] = exampleArch;
 
         // if defaultInstallation[1].toolEnvCmd contains zsh
         // then replace it with bash
@@ -441,6 +497,13 @@ export async function createExample(
                 extensionPath,
                 jsonProject);
 
+        } else if (jsonProject.language == "C#") {
+            await generateCSProjectFiles(
+                tempDirWithWorkspace,
+                extensionPath,
+                jsonProject);
+        } else {
+            throw new Error("Unexpected language.");
         }
 
         // Get the list of files from the temp directory

@@ -151,6 +151,11 @@ export async function askQuestionToConnext(
         "https://"
     );
 
+    intelligencePlatformHttpUrl = intelligencePlatformHttpUrl.replace(
+        "ws://",
+        "http://"
+    );
+
     let uri = `${intelligencePlatformHttpUrl}/api/v1/ask`;
 
     let options: fetch.RequestInit = {
@@ -331,4 +336,113 @@ export function getPlatformStr() {
         return "unknown";
     }
 }
+
+/**
+ * Retrieves the list of available .NET SDK versions installed on the system.
+ *
+ * @returns {Promise<string[]>} A promise that resolves to an array of .NET SDK version strings.
+ *
+ * @throws Will throw an error if the command execution fails or if there is any error output.
+ *
+ * @example
+ * ```typescript
+ * getAvailableDotnetSDKVersions()
+ *     .then(versions => {
+ *         console.log('Available .NET SDK versions:', versions);
+ *     })
+ *     .catch(error => {
+ *         console.error('Error:', error);
+ *     });
+ * ```
+ */
+async function getAvailableDotnetSDKVersions(): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+        exec('dotnet --list-sdks', (error, stdout, stderr) => {
+            if (error) {
+                reject(`Error executing command: ${error.message}`);
+                return;
+            }
+
+            if (stderr) {
+                reject(`Error output: ${stderr}`);
+                return;
+            }
+
+            // Parse the output
+            const sdks = stdout
+                .split('\n') // Split by line
+                .map(line => line.trim()) // Remove leading/trailing spaces
+                .filter(line => line) // Remove empty lines
+                .map(line => {
+                    const match = line.match(/^([\d\.]+) \[(.*)\]$/);
+                    return match ? match[1] : null; // Extract version
+                })
+                .filter((version): version is string => version !== null); // Filter out nulls
+
+            resolve(sdks);
+        });
+    });
+}
+
+/**
+ * Maps a given version string to a corresponding .NET framework name.
+ *
+ * @param version - The version string to map (e.g., "7.0.100").
+ * @returns The corresponding framework name (e.g., "net7") or undefined if the version is invalid or not recognized.
+ */
+function mapVersionToFramework(version: string): string | undefined {
+    const majorVersion = version.split(".")[0]; // Extract the major version (e.g., "7" from "7.0.100")
+    if (!majorVersion) {
+        return undefined; // Return undefined if the version string is invalid
+    }
+
+    const versionMap: { [key: string]: string } = {
+        "8": "net8",
+        "7": "net7",
+        "6": "net6",
+        "5": "net5"
+    };
+
+    return versionMap[majorVersion];
+}
+
+/**
+ * Retrieves the available .NET frameworks by fetching the SDK versions
+ * and mapping them to their corresponding framework names.
+ *
+ * @returns {Promise<string[]>} A promise that resolves to an array of .NET framework names.
+ * If an error occurs, the promise resolves to an empty array.
+ */
+async function getDotnetFrameworks(): Promise<string[]> {
+    try {
+        const sdks = await getAvailableDotnetSDKVersions();
+        const frameworks = sdks.map(mapVersionToFramework);
+        const filteredFrameworks = frameworks.filter(
+            (framework): framework is string => framework !== undefined
+        );
+        return filteredFrameworks;
+    } catch (error) {
+        return [];
+    }
+}
+
+/**
+ * Retrieves the highest .NET framework version available from the system.
+ *
+ * @returns {Promise<string | undefined>} A promise that resolves to the highest .NET framework version
+ * available (e.g., "net8", "net7", "net6", "net5"), or `undefined` if none of the specified versions are found.
+ */
+export async function getHighestDotnetFramework(): Promise<string | undefined> {
+    const frameworks = await getDotnetFrameworks();
+    const versions = ["net8", "net7", "net6", "net5"];
+
+    for (const version of versions) {
+        if (frameworks.includes(version)) {
+            return version;
+        }
+    }
+
+    return undefined;
+}
+
 
