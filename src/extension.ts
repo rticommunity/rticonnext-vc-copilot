@@ -1114,25 +1114,25 @@ export async function activate(context: vscode.ExtensionContext) {
                 if (relatedApplication != null) {
                     if (relatedApplication == "RTI Admin Console") {
                         response.button({
-                            command: "connext-vc-copilot.start-admin-console",
+                            command: "connext-vc-copilot.run-admin-console",
                             title: vscode.l10n.t("Start Admin Console"),
                             arguments: [],
                         });
                     } else if (relatedApplication == "RTI System Designer") {
                         response.button({
-                            command: "connext-vc-copilot.start-system-designer",
+                            command: "connext-vc-copilot.run-system-designer",
                             title: vscode.l10n.t("Start System Designer"),
                             arguments: [],
                         });
                     } else if (relatedApplication == "RTI Monitor") {
                         response.button({
-                            command: "connext-vc-copilot.start-monitor-ui",
+                            command: "connext-vc-copilot.run-monitor-ui",
                             title: vscode.l10n.t("Start Monitor"),
                             arguments: [],
                         });
                     } else {
                         response.button({
-                            command: "connext-vc-copilot.start-shapes-demo",
+                            command: "connext-vc-copilot.run-shapes-demo",
                             title: vscode.l10n.t("Start Shapes Demo"),
                             arguments: [],
                         });
@@ -1180,7 +1180,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 result.metadata.command != "startSystemDesigner" &&
                 result.metadata.command != "startMonitorUI" &&
                 result.metadata.command != "startShapesDemo" &&
-                result.metadata.command != "connextInfo"
+                result.metadata.command != "connextInfo" &&
+                result.metadata.command != "newExample"
             ) {
                 return await generateFollowUps(
                     globalState.NUM_FOLLOWUPS,
