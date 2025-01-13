@@ -283,59 +283,55 @@ async function generateCSProjectFiles(
     fs.writeFileSync(outputLaunchPath, outputLaunch);
 }
 
-/**
- * Retrieves the publisher and subscriber files for a given language within a workspace.
- *
- * @param workspaceUri - The URI of the workspace to search within.
- * @param language - The programming language to filter files by.
- * @returns A promise that resolves to an array containing the paths of the publisher and subscriber files.
- * @throws Will throw an error if the language is unexpected, if there is an error reading the directory, or if the publisher or subscriber files cannot be found.
- */
-export async function getPublisherAndSubscriberFile(
+export async function getPublisherSubscriberAndTypeFile(
     workspaceUri: vscode.Uri,
     language: string
 ): Promise<string[]> {
-    let languageInfo = getLanguageInfo(language);
+    const languageInfo = getLanguageInfo(language);
 
-    if (languageInfo == undefined) {
+    if (!languageInfo) {
         throw new Error("Unexpected language.");
     }
 
     const files = await readDirectoryRecursive(workspaceUri);
 
-    if (files == undefined) {
+    if (!files) {
         throw new Error("Error reading temporary directory.");
     }
 
-    let publisherFile = undefined;
-    let subscriberFile = undefined;
+    const isPythonOrC = ["Python", "C", "C++98", "C++11"].includes(language);
+    const publisherSuffix = isPythonOrC ? "_publisher" : "Publisher";
+    const subscriberSuffix = isPythonOrC ? "_subscriber" : "Subscriber";
 
-    if (
-        language == "Python" ||
-        language == "C" ||
-        language == "C++98" ||
-        language == "C++11"
-    ) {
-        publisherFile = files.find(([fileName]) => {
-            return fileName.endsWith(`_publisher.${languageInfo.extension}`);
-        });
-        subscriberFile = files.find(([fileName]) => {
-            return fileName.endsWith(`_subscriber.${languageInfo.extension}`);
-        });
-    } else {
-        publisherFile = files.find(([fileName]) => {
-            return fileName.endsWith(`Publisher.${languageInfo.extension}`);
-        });
-        subscriberFile = files.find(([fileName]) => {
-            return fileName.endsWith(`Subscriber.${languageInfo.extension}`);
-        });
+    const publisherFile = files.find(([fileName]) =>
+        fileName.endsWith(`${publisherSuffix}.${languageInfo.srcExtension}`)
+    );
+    if (!publisherFile) {
+        throw new Error(`Error finding ${language} publisher file.`);
     }
 
-    if (publisherFile == undefined || subscriberFile == undefined) {
-        throw new Error(`Error finding ${language} files.`);
+    const subscriberFile = files.find(([fileName]) =>
+        fileName.endsWith(`${subscriberSuffix}.${languageInfo.srcExtension}`)
+    );
+    if (!subscriberFile) {
+        throw new Error(`Error finding ${language} subscriber file.`);
     }
 
-    return [publisherFile[0], subscriberFile[0]];
+    const typeFileName = publisherFile[0].replace(
+        `${publisherSuffix}.${languageInfo.srcExtension}`,
+        ""
+    );
+
+    const typeFile = files.find(([fileName]) =>
+        fileName.endsWith(
+            `${typeFileName}.${languageInfo.headerExtension}`
+        )
+    );
+    if (!typeFile) {
+        throw new Error(`Error finding ${language} type file.`);
+    }
+
+    return [publisherFile[0], subscriberFile[0], typeFile[0]];
 }
 
 /**
@@ -352,33 +348,32 @@ export async function getPublisherAndSubscriberFile(
 async function customizePublisherAndSubscriberFile(
     publisher: boolean,
     workspaceUri: vscode.Uri,
-    idlFileName: string,
     language: string,
     userPrompt: string,
     accessCode: string,
     cancel_token: vscode.CancellationToken
 ) {
-    let pubAndSubFiles = await getPublisherAndSubscriberFile(
-        workspaceUri,
-        language
-    );
-
-    let file = vscode.Uri.joinPath(
-        workspaceUri,
-        publisher ? pubAndSubFiles[0] : pubAndSubFiles[1]
-    );
-
     let languageInfo = getLanguageInfo(language);
 
     if (languageInfo == undefined) {
         throw new Error("Unexpected language.");
     }
 
+    let exampleFiles = await getPublisherSubscriberAndTypeFile(
+        workspaceUri,
+        language
+    );
+
+    let file = vscode.Uri.joinPath(
+        workspaceUri,
+        publisher ? exampleFiles[0] : exampleFiles[1]
+    );
+
     let fileContent = await readTextFile(file.fsPath);
 
-    let idlFile = vscode.Uri.joinPath(workspaceUri, idlFileName);
+    let typeFile = vscode.Uri.joinPath(workspaceUri, exampleFiles[2]);
 
-    let idlFileContent = await readTextFile(idlFile.fsPath);
+    let typeFileContent = await readTextFile(typeFile.fsPath);
 
     let pubSubStr = publisher ? "publisher" : "subscriber";
 
@@ -388,16 +383,17 @@ async function customizePublisherAndSubscriberFile(
     needed, leave the code as is.
 
     Do not provide any explanations of what the changes are. Only provide the
-    updated code.
+    updated code. Make sure you change the topic name if the user give you
+    one.
     
     Instructions:
 
     ${userPrompt}
 
-    IDL type definition:
+    Type definition code:
 
-    \`\`\`idl
-    ${idlFileContent}
+    \`\`\`${languageInfo.markupCode}
+    ${typeFileContent}
     \`\`\`
 
     Input ${pubSubStr} Code:
@@ -418,7 +414,8 @@ async function customizePublisherAndSubscriberFile(
     }
 
     updatedCode = updatedCode.replace("```" + languageInfo.markupCode, "");
-    updatedCode = updatedCode.replace("```", "");
+    let index = updatedCode.lastIndexOf("```");
+    updatedCode = updatedCode.substring(0, index);
 
     await writeTextFile(file.fsPath, updatedCode);
 }
@@ -596,7 +593,7 @@ export async function createExample(
                     -example ${exampleArch} ${idlFile.fsPath}`;
         runCommandSync(command);
 
-        let pubSubFiles = await getPublisherAndSubscriberFile(
+        let pubSubFiles = await getPublisherSubscriberAndTypeFile(
             tempDirWithWorkspace,
             jsonProject.language
         );
@@ -645,13 +642,12 @@ export async function createExample(
             throw new Error("Unexpected language.");
         }
 
-        // Customizing application
+        /* Customizing application */
         stream.progress("Updating Publisher code ...");
 
         await customizePublisherAndSubscriberFile(
             true,
             tempDirWithWorkspace,
-            jsonProject.idl_file_name,
             jsonProject.language,
             prompt,
             accessCode,
@@ -663,7 +659,6 @@ export async function createExample(
         await customizePublisherAndSubscriberFile(
             false,
             tempDirWithWorkspace,
-            jsonProject.idl_file_name,
             jsonProject.language,
             prompt,
             accessCode,
