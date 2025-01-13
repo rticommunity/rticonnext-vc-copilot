@@ -8,7 +8,6 @@
  */
 
 import * as vscode from "vscode";
-import fetch from "node-fetch";
 import io from "socket.io-client";
 import { Socket } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
@@ -26,10 +25,14 @@ import {
 import {
     showErrorMessage,
     showInformationMessage,
+    askQuestion,
+    makeHttpRequest,
     CONNEXT_PRODUCT,
 } from "./utils";
 
 import { getPrompt } from "./prompt";
+
+import { createExample, initializeWorkspace } from "./project";
 
 class GlobalState {
     readonly connextUsernameKey: string;
@@ -146,28 +149,6 @@ async function getSecrets(filePath: string): Promise<Secrets> {
 }
 
 /**
- * Makes an HTTP request to the specified URI with the given options.
- *
- * @param uri - The URI to make the request to.
- * @param options - The options for the request.
- * @returns A promise that resolves to the response data as a string.
- * @throws If an error occurs during the request.
- */
-async function makeHttpRequest(
-    uri: string,
-    options: fetch.RequestInit
-): Promise<any> {
-    try {
-        const response = await fetch(uri, options);
-        const data = await response.json(); // Parse the JSON response
-        return data;
-    } catch (error) {
-        showErrorMessage(`Error making HTTP request: ${error}`);
-        throw error;
-    }
-}
-
-/**
  * Generates a unique request ID.
  *
  * @returns {string} A unique request ID.
@@ -200,36 +181,6 @@ async function waitForCondition(
         }
         await new Promise((resolve) => setTimeout(resolve, checkInterval));
     }
-}
-
-/**
- * Asks a question to a language model and returns the response.
- *
- * @param question - The question to ask the language model.
- * @param token - A cancellation token to cancel the request if needed.
- * @returns A promise that resolves to the response from the language model.
- */
-async function askQuestion(
-    question: string,
-    token: vscode.CancellationToken
-): Promise<string> {
-    const MODEL_SELECTOR: vscode.LanguageModelChatSelector = {
-        vendor: "copilot",
-        family: "gpt-4o",
-    };
-
-    const [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
-
-    const messages = [vscode.LanguageModelChatMessage.User(question)];
-
-    let response = "";
-
-    const chatResponse = await model.sendRequest(messages, {}, token);
-    for await (const fragment of chatResponse.text) {
-        response += fragment;
-    }
-
-    return response;
 }
 
 /**
@@ -543,6 +494,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
         response.markdown(`------------------------------------------------\n`);
         response.markdown(`## Installation ${count}\n`);
         response.markdown(`- *Directory:* \`${installation.directory}\`\n\n`);
+        response.markdown(`- *Version:* \`${installation.version}\`\n\n`);
         response.markdown(
             `- *Default:* \`${installation.default ? "Yes" : "No"}\`\n`
         );
@@ -610,7 +562,7 @@ async function logout(context: vscode.ExtensionContext) {
  *
  * It also creates a chat participant for handling user queries and interacting with the Connext Intelligence Platform.
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     setExtensionContextForInstallation(context);
     globalThis.globalState.extensionUri = context.extensionUri;
     globalThis.globalState.installations = getConnextInstallations();
@@ -726,6 +678,35 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(cidpValidate);
+
+    // Create workspace code command
+    let cidpWorkspace = vscode.commands.registerCommand(
+        "connext-vc-copilot.create-workspace",
+        async (
+            response: vscode.ChatResponseStream,
+            configurationVariables: any,
+            tempDir: vscode.Uri
+        ) => {
+            const uri = await vscode.window.showOpenDialog({
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: false,
+                openLabel: "Select Parent Directory",
+            });
+
+            if (uri && uri.length > 0) {
+                const selectedPath = uri[0];
+                initializeWorkspace(
+                    response,
+                    configurationVariables,
+                    selectedPath,
+                    tempDir
+                );
+            }
+        }
+    );
+
+    context.subscriptions.push(cidpWorkspace);
 
     // Run Admin Console
     let cidpRunAdmin = vscode.commands.registerCommand(
@@ -922,7 +903,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const jsonResponse = await makeHttpRequest(uri, options);
 
-                if (jsonResponse.error) {
+                if (jsonResponse == undefined || jsonResponse.error) {
                     await logout(extensionContext);
                     showErrorMessage(
                         `Error getting access token: ${jsonResponse.error_description}`
@@ -955,6 +936,16 @@ export function activate(context: vscode.ExtensionContext) {
                 return result;
             } else if (request.command === "openFiles") {
                 useAllOpenFiles = true;
+            } else if (request.command === "newExample") {
+                await createExample(
+                    request.prompt,
+                    extensionContext.extensionPath,
+                    globalThis.globalState.installations,
+                    response,
+                    globalThis.globalState.accessCode,
+                    token
+                );
+                return result;
             }
 
             let socket;
@@ -1123,25 +1114,25 @@ export function activate(context: vscode.ExtensionContext) {
                 if (relatedApplication != null) {
                     if (relatedApplication == "RTI Admin Console") {
                         response.button({
-                            command: "connext-vc-copilot.start-admin-console",
+                            command: "connext-vc-copilot.run-admin-console",
                             title: vscode.l10n.t("Start Admin Console"),
                             arguments: [],
                         });
                     } else if (relatedApplication == "RTI System Designer") {
                         response.button({
-                            command: "connext-vc-copilot.start-system-designer",
+                            command: "connext-vc-copilot.run-system-designer",
                             title: vscode.l10n.t("Start System Designer"),
                             arguments: [],
                         });
                     } else if (relatedApplication == "RTI Monitor") {
                         response.button({
-                            command: "connext-vc-copilot.start-monitor-ui",
+                            command: "connext-vc-copilot.run-monitor-ui",
                             title: vscode.l10n.t("Start Monitor"),
                             arguments: [],
                         });
                     } else {
                         response.button({
-                            command: "connext-vc-copilot.start-shapes-demo",
+                            command: "connext-vc-copilot.run-shapes-demo",
                             title: vscode.l10n.t("Start Shapes Demo"),
                             arguments: [],
                         });
@@ -1189,7 +1180,8 @@ export function activate(context: vscode.ExtensionContext) {
                 result.metadata.command != "startSystemDesigner" &&
                 result.metadata.command != "startMonitorUI" &&
                 result.metadata.command != "startShapesDemo" &&
-                result.metadata.command != "connextInfo"
+                result.metadata.command != "connextInfo" &&
+                result.metadata.command != "newExample"
             ) {
                 return await generateFollowUps(
                     globalState.NUM_FOLLOWUPS,

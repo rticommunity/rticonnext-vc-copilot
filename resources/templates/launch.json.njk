@@ -1,0 +1,58 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch {{ idl_file_name }}_publisher",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/{{ idl_file_name }}_publisher",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+{% if platform === "mac" %}
+                    "name": "DYLD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% elif platform === "linux" %}
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
+{% else %}
+                    "name": "PATH",
+                    "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+{% endif %}
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "{{ mi_mode }}"
+        },
+        {
+            "name": "Launch {{ idl_file_name }}_subscriber",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/{{ idl_file_name }}_subscriber",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+{% if platform === "mac" %}
+                    "name": "DYLD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% elif platform === "linux" %}
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
+{% else %}
+                    "name": "PATH",
+                    "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+{% endif %}
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "{{ mi_mode }}"
+        }
+    ]
+}

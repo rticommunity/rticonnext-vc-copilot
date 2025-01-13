@@ -1,0 +1,38 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "{{ publisher_class }}",
+            "request": "launch",
+            "mainClass": "{{ publisher_class}}",
+            "env": {
+{% if platform === "mac" %}
+                "DYLD_LIBRARY_PATH": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% elif platform === "linux" %}
+                "LD_LIBRARY_PATH": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
+{% else %}
+                "PATH": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+{% endif %}
+            }
+        },
+        {
+            "type": "java",
+            "name": "{{ subscriber_class}}",
+            "request": "launch",
+            "mainClass": "{{ subscriber_class}}",
+            "env": {
+{% if platform === "mac" %}
+                "DYLD_LIBRARY_PATH": "{{ connext_path }}/lib/{{ architecture}}:${env:DYLD_LIBRARY_PATH}"
+{% elif platform === "linux" %}
+                "LD_LIBRARY_PATH": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
+{% else %}
+                "PATH": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+{% endif %}
+            }
+        }
+    ]
+}
