@@ -9,9 +9,9 @@
 
 import * as vscode from "vscode";
 import * as os from "os";
-import * as nunjucks from 'nunjucks';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as nunjucks from "nunjucks";
+import * as fs from "fs";
+import * as path from "path";
 import {
     Installation,
     Architecture,
@@ -22,6 +22,7 @@ import {
     CONNEXT_PRODUCT,
     askQuestionWithJsonResponse,
     askQuestionToConnext,
+    askQuestionToConnextWithJsonResponse,
     runCommandSync,
     isWindows,
     isLinux,
@@ -29,7 +30,9 @@ import {
     readDirectoryRecursive,
     getPlatformStr,
     getHighestDotnetFramework,
-    getLanguageExtension
+    getLanguageInfo,
+    readTextFile,
+    writeTextFile,
 } from "./utils";
 import { error } from "console";
 import { json } from "stream/consumers";
@@ -56,7 +59,10 @@ async function generateCMakeFiles(
     extensionPath: string,
     configurationVariables: any
 ) {
-    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(".idl", "");
+    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(
+        ".idl",
+        ""
+    );
 
     let data = {
         cmake_version: "3.11",
@@ -69,7 +75,7 @@ async function generateCMakeFiles(
         generator: "Unix Makefiles",
         mi_mode: "lldb",
         platform: getPlatformStr(),
-        architecture: configurationVariables.architecture
+        architecture: configurationVariables.architecture,
     };
 
     if (configurationVariables.language == "C") {
@@ -99,12 +105,9 @@ async function generateCMakeFiles(
     }
 
     // Configure Nunjucks to load templates from the specified directory
-    nunjucks.configure(
-        path.resolve(extensionPath, "resources/templates"),
-        {
-            autoescape: true,
-        }
-    );
+    nunjucks.configure(path.resolve(extensionPath, "resources/templates"), {
+        autoescape: true,
+    });
 
     // Render the template with data
     const outputCMake = nunjucks.render("CMakeLists.txt.njk", data);
@@ -130,9 +133,8 @@ async function generateCMakeFiles(
         ".vscode",
         "launch.json"
     );
-    
-    fs.writeFileSync(outputLaunchPath, outputLaunch);
 
+    fs.writeFileSync(outputLaunchPath, outputLaunch);
 }
 
 /**
@@ -157,16 +159,13 @@ async function generateJavaProjectFiles(
         architecture: configurationVariables.architecture,
         publisher_class: configurationVariables.publisher_class,
         subscriber_class: configurationVariables.subscriber_class,
-        platform: getPlatformStr()
+        platform: getPlatformStr(),
     };
 
     // Configure Nunjucks to load templates from the specified directory
-    nunjucks.configure(
-        path.resolve(extensionPath, "resources/templates"),
-        {
-            autoescape: true,
-        }
-    );
+    nunjucks.configure(path.resolve(extensionPath, "resources/templates"), {
+        autoescape: true,
+    });
 
     // Render the template with data
     const outputLaunch = nunjucks.render("launch.java.json.njk", data);
@@ -178,7 +177,7 @@ async function generateJavaProjectFiles(
         ".vscode",
         "launch.json"
     );
-    
+
     fs.writeFileSync(outputLaunchPath, outputLaunch);
 
     const outputSettings = nunjucks.render("settings.java.json.njk", data);
@@ -188,7 +187,7 @@ async function generateJavaProjectFiles(
         ".vscode",
         "settings.json"
     );
-    
+
     fs.writeFileSync(outputSettingsPath, outputSettings);
 }
 
@@ -214,16 +213,13 @@ async function generatePythonProjectFiles(
 ) {
     let data = {
         publisher_file: configurationVariables.publisher_file,
-        subscriber_file: configurationVariables.subscriber_file
+        subscriber_file: configurationVariables.subscriber_file,
     };
 
     // Configure Nunjucks to load templates from the specified directory
-    nunjucks.configure(
-        path.resolve(extensionPath, "resources/templates"),
-        {
-            autoescape: true,
-        }
-    );
+    nunjucks.configure(path.resolve(extensionPath, "resources/templates"), {
+        autoescape: true,
+    });
 
     // Render the template with data
     const outputLaunch = nunjucks.render("launch.python.json.njk", data);
@@ -235,16 +231,33 @@ async function generatePythonProjectFiles(
         ".vscode",
         "launch.json"
     );
-    
+
     fs.writeFileSync(outputLaunchPath, outputLaunch);
 }
 
+/**
+ * Generates C# project files for the given workspace.
+ *
+ * This function takes the workspace URI, extension path, and configuration variables,
+ * and generates the necessary C# project files using Nunjucks templates.
+ *
+ * @param workspaceUri - The URI of the workspace where the project files will be generated.
+ * @param extensionPath - The path to the extension's resources directory.
+ * @param configurationVariables - An object containing configuration variables, including:
+ *   - idl_file_name: The name of the IDL file.
+ *   - example_architecture: The architecture example to be used.
+ *
+ * @returns A promise that resolves when the project files have been generated.
+ */
 async function generateCSProjectFiles(
     workspaceUri: vscode.Uri,
     extensionPath: string,
     configurationVariables: any
 ) {
-    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(".idl", "");
+    let idl_file_name_no_ext = configurationVariables.idl_file_name.replace(
+        ".idl",
+        ""
+    );
 
     let data = {
         idl_file_name: idl_file_name_no_ext,
@@ -252,12 +265,9 @@ async function generateCSProjectFiles(
     };
 
     // Configure Nunjucks to load templates from the specified directory
-    nunjucks.configure(
-        path.resolve(extensionPath, "resources/templates"),
-        {
-            autoescape: true,
-        }
-    );
+    nunjucks.configure(path.resolve(extensionPath, "resources/templates"), {
+        autoescape: true,
+    });
 
     // Render the template with data
     const outputLaunch = nunjucks.render("launch.net.json.njk", data);
@@ -269,17 +279,25 @@ async function generateCSProjectFiles(
         ".vscode",
         "launch.json"
     );
-    
+
     fs.writeFileSync(outputLaunchPath, outputLaunch);
 }
 
+/**
+ * Retrieves the publisher and subscriber files for a given language within a workspace.
+ *
+ * @param workspaceUri - The URI of the workspace to search within.
+ * @param language - The programming language to filter files by.
+ * @returns A promise that resolves to an array containing the paths of the publisher and subscriber files.
+ * @throws Will throw an error if the language is unexpected, if there is an error reading the directory, or if the publisher or subscriber files cannot be found.
+ */
 export async function getPublisherAndSubscriberFile(
-        workspaceUri: vscode.Uri,
-        language: string): Promise<string[]>
-{
-    let ext = getLanguageExtension(language);
+    workspaceUri: vscode.Uri,
+    language: string
+): Promise<string[]> {
+    let languageInfo = getLanguageInfo(language);
 
-    if (ext == undefined) {
+    if (languageInfo == undefined) {
         throw new Error("Unexpected language.");
     }
 
@@ -292,23 +310,24 @@ export async function getPublisherAndSubscriberFile(
     let publisherFile = undefined;
     let subscriberFile = undefined;
 
-    if (language == "Python" ||
+    if (
+        language == "Python" ||
         language == "C" ||
         language == "C++98" ||
         language == "C++11"
     ) {
         publisherFile = files.find(([fileName]) => {
-            return fileName.endsWith(`_publisher.${ext}`);
+            return fileName.endsWith(`_publisher.${languageInfo.extension}`);
         });
         subscriberFile = files.find(([fileName]) => {
-            return fileName.endsWith(`_subscriber.${ext}`);
+            return fileName.endsWith(`_subscriber.${languageInfo.extension}`);
         });
     } else {
         publisherFile = files.find(([fileName]) => {
-            return fileName.endsWith(`Publisher.${ext}`);
+            return fileName.endsWith(`Publisher.${languageInfo.extension}`);
         });
         subscriberFile = files.find(([fileName]) => {
-            return fileName.endsWith(`Subscriber.${ext}`);
+            return fileName.endsWith(`Subscriber.${languageInfo.extension}`);
         });
     }
 
@@ -317,9 +336,107 @@ export async function getPublisherAndSubscriberFile(
     }
 
     return [publisherFile[0], subscriberFile[0]];
-    
 }
 
+/**
+ * Customizes the publisher or subscriber file based on user instructions.
+ *
+ * @param publisher - A boolean indicating whether to customize the publisher file (true) or the subscriber file (false).
+ * @param workspaceUri - The URI of the workspace where the files are located.
+ * @param language - The programming language of the files to be customized.
+ * @param userPrompt - The user-provided instructions for customizing the file.
+ * @param accessCode - The access code required to interact with the Connext service.
+ * @param cancel_token - A token to signal cancellation of the customization process.
+ * @throws Will throw an error if the language is unexpected or if there is an error during customization.
+ */
+async function customizePublisherAndSubscriberFile(
+    publisher: boolean,
+    workspaceUri: vscode.Uri,
+    idlFileName: string,
+    language: string,
+    userPrompt: string,
+    accessCode: string,
+    cancel_token: vscode.CancellationToken
+) {
+    let pubAndSubFiles = await getPublisherAndSubscriberFile(
+        workspaceUri,
+        language
+    );
+
+    let file = vscode.Uri.joinPath(
+        workspaceUri,
+        publisher ? pubAndSubFiles[0] : pubAndSubFiles[1]
+    );
+
+    let languageInfo = getLanguageInfo(language);
+
+    if (languageInfo == undefined) {
+        throw new Error("Unexpected language.");
+    }
+
+    let fileContent = await readTextFile(file.fsPath);
+
+    let idlFile = vscode.Uri.joinPath(workspaceUri, idlFileName);
+
+    let idlFileContent = await readTextFile(idlFile.fsPath);
+
+    let pubSubStr = publisher ? "publisher" : "subscriber";
+
+    let customizePrompt = `Based on the provided instructions and the IDL type 
+    definition, determine if any modifications are needed to the provided 
+    ${pubSubStr} code. Provide the full updated code. If no modifications are 
+    needed, leave the code as is.
+
+    Do not provide any explanations of what the changes are. Only provide the
+    updated code.
+    
+    Instructions:
+
+    ${userPrompt}
+
+    IDL type definition:
+
+    \`\`\`idl
+    ${idlFileContent}
+    \`\`\`
+
+    Input ${pubSubStr} Code:
+
+    \`\`\`${languageInfo.markupCode}
+    ${fileContent}
+    \`\`\`
+    `;
+
+    let updatedCode = await askQuestionToConnext(
+        customizePrompt,
+        accessCode,
+        cancel_token
+    );
+
+    if (updatedCode == undefined) {
+        throw new Error(`Error customizing ${pubSubStr} code.`);
+    }
+
+    updatedCode = updatedCode.replace("```" + languageInfo.markupCode, "");
+    updatedCode = updatedCode.replace("```", "");
+
+    await writeTextFile(file.fsPath, updatedCode);
+}
+
+/**
+ * Creates an example project based on the provided prompt and configurations.
+ *
+ * @param prompt - The input prompt containing a type definition and target language.
+ * @param extensionPath - The path to the extension.
+ * @param installations - An array of Connext DDS installations or undefined.
+ * @param stream - The stream to send progress and results to.
+ * @param accessCode - The access code for authentication or undefined.
+ * @param cancel_token - The cancellation token to handle operation cancellation.
+ * @returns A promise that resolves when the example project is created.
+ *
+ * @throws Will throw an error if there is an issue generating the IDL file, 
+ *         reading the temporary directory, or deleting unnecessary files.
+ */
 export async function createExample(
     prompt: string,
     extensionPath: string,
@@ -363,7 +480,7 @@ export async function createExample(
 
             Input Prompt: ${prompt}
             
-            Expected JSON Response::
+            Expected JSON Response:
             {
                 "workspace_name": "<workspace_name>",
                 "language": "<language>",
@@ -412,7 +529,7 @@ export async function createExample(
             tempDir,
             tempWorkspaceName
         );
-    
+
         // Delete the temporary directory if it already exists
         try {
             await vscode.workspace.fs.delete(tempDirWithWorkspace, {
@@ -421,7 +538,7 @@ export async function createExample(
         } catch (error) {
             // Ignore error if the directory does not exist
         }
-        
+
         await vscode.workspace.fs.createDirectory(tempDirWithWorkspace);
 
         // Generate IDL file
@@ -461,7 +578,7 @@ export async function createExample(
         if (jsonProject.language == "Python") {
             exampleArch = "universal";
         } else if (jsonProject.language == "C#") {
-            let sdk = await getHighestDotnetFramework()
+            let sdk = await getHighestDotnetFramework();
 
             if (sdk == undefined) {
                 sdk = "net8";
@@ -481,7 +598,8 @@ export async function createExample(
 
         let pubSubFiles = await getPublisherAndSubscriberFile(
             tempDirWithWorkspace,
-            jsonProject.language);
+            jsonProject.language
+        );
 
         if (
             jsonProject.language == "C" ||
@@ -494,13 +612,20 @@ export async function createExample(
                 jsonProject
             );
         } else if (jsonProject.language == "Java") {
-            jsonProject["publisher_class"] = pubSubFiles[0].replace(".java", "");
-            jsonProject["subscriber_class"] = pubSubFiles[1].replace(".java", "");
+            jsonProject["publisher_class"] = pubSubFiles[0].replace(
+                ".java",
+                ""
+            );
+            jsonProject["subscriber_class"] = pubSubFiles[1].replace(
+                ".java",
+                ""
+            );
 
             await generateJavaProjectFiles(
                 tempDirWithWorkspace,
                 extensionPath,
-                jsonProject);
+                jsonProject
+            );
         } else if (jsonProject.language == "Python") {
             jsonProject["publisher_file"] = pubSubFiles[0].replace(".py", "");
             jsonProject["subscriber_file"] = pubSubFiles[1].replace(".py", "");
@@ -508,19 +633,42 @@ export async function createExample(
             await generatePythonProjectFiles(
                 tempDirWithWorkspace,
                 extensionPath,
-                jsonProject);
-
+                jsonProject
+            );
         } else if (jsonProject.language == "C#") {
             await generateCSProjectFiles(
                 tempDirWithWorkspace,
                 extensionPath,
-                jsonProject);
+                jsonProject
+            );
         } else {
             throw new Error("Unexpected language.");
         }
 
         // Customizing application
-        stream.progress("Customizing application ...");
+        stream.progress("Updating Publisher code ...");
+
+        await customizePublisherAndSubscriberFile(
+            true,
+            tempDirWithWorkspace,
+            jsonProject.idl_file_name,
+            jsonProject.language,
+            prompt,
+            accessCode,
+            cancel_token
+        );
+
+        stream.progress("Updating Subscriber code ...");
+
+        await customizePublisherAndSubscriberFile(
+            false,
+            tempDirWithWorkspace,
+            jsonProject.idl_file_name,
+            jsonProject.language,
+            prompt,
+            accessCode,
+            cancel_token
+        );
 
         // Get the list of files from the temp directory
         const files = await readDirectoryRecursive(tempDirWithWorkspace);
@@ -588,11 +736,7 @@ export async function createExample(
         stream.button({
             command: "connext-vc-copilot.create-workspace",
             title: vscode.l10n.t("Accept and create workspace"),
-            arguments: [
-                stream,
-                jsonProject,
-                tempDirWithWorkspace,
-            ],
+            arguments: [stream, jsonProject, tempDirWithWorkspace],
         });
 
         ok = true;
@@ -602,7 +746,9 @@ export async function createExample(
         );
     } finally {
         if (!ok && tempDirWithWorkspace != undefined) {
-            await vscode.workspace.fs.delete(tempDirWithWorkspace, { recursive: true });
+            await vscode.workspace.fs.delete(tempDirWithWorkspace, {
+                recursive: true,
+            });
         }
     }
 }

@@ -10,6 +10,7 @@
 import * as vscode from "vscode";
 import fetch from "node-fetch";
 import { exec, execSync } from "child_process";
+import * as fs from 'fs/promises';
 
 export const CONNEXT_PRODUCT = "Connext for Github Copilot";
 
@@ -445,27 +446,76 @@ export async function getHighestDotnetFramework(): Promise<string | undefined> {
     return undefined;
 }
 
+interface LanguageInfo {
+    name: string;
+    extension: string;
+    markupCode: string;
+}
+
 /**
- * Retrieves the file extension associated with a given programming language.
+ * Retrieves information about a given programming language.
  *
  * @param language - The name of the programming language.
- * @returns The file extension corresponding to the specified language, or `undefined` if the language is not recognized.
+ * @returns An object containing the language name, file extension, and a markup code string, or `undefined` if the language is not recognized.
  */
-export function getLanguageExtension(language: string): string | undefined {
-    const extensionMap: { [key: string]: string } = {
-        "Java": "java",
-        "C#": "cs",
-        "C": "c",
-        "C++98": "cxx",
-        "C++11": "cxx",
-        "Python": "py"
+export function getLanguageInfo(language: string): LanguageInfo | undefined {
+    const extensionMap: { [key: string]: { extension: string; markupCode: string } } = {
+        "Java": { extension: "java", markupCode: "java" },
+        "C#": { extension: "cs", markupCode: "cs" },
+        "C": { extension: "c", markupCode: "c" },
+        "C++98": { extension: "cxx", markupCode: "cpp" },
+        "C++11": { extension: "cxx", markupCode: "cpp" },
+        "Python": { extension: "py", markupCode: "python" }
     };
 
     if (language in extensionMap) {
-        return extensionMap[language];
+        return {
+            name: language,
+            extension: extensionMap[language].extension,
+            markupCode: extensionMap[language].markupCode
+        };
     }
 
     return undefined;
 }
+
+/**
+ * Asynchronously reads the content of a text file.
+ *
+ * @param filePath - The path to the file to be read.
+ * @returns A promise that resolves to the content of the file as a string.
+ * @throws Will throw an error if the file cannot be read.
+ */
+export async function readTextFile(filePath: string): Promise<string> {
+    try {
+        const content = await fs.readFile(filePath, "utf-8");
+        return content;
+    } catch (error: any) {
+        console.error(`Error reading file: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Writes the provided content to a text file at the specified file path.
+ *
+ * @param filePath - The path to the file where the content should be written.
+ * @param content - The text content to write to the file.
+ * @returns A promise that resolves when the file has been successfully written.
+ * @throws Will throw an error if there is an issue writing the file.
+ */
+export async function writeTextFile(
+    filePath: string,
+    content: string
+): Promise<void> {
+    try {
+        await fs.writeFile(filePath, content, "utf-8");
+    } catch (error: any) {
+        console.error(`Error writing file: ${error.message}`);
+        throw error;
+    }
+}
+
+
 
 
