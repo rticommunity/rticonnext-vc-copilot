@@ -6,7 +6,7 @@
     "configurations": [
         {
             "type": "java",
-            "name": "{{ publisher_class }}",
+            "name": "Launch {{ publisher_class }}",
             "request": "launch",
             "mainClass": "{{ publisher_class}}",
             "env": {
@@ -15,13 +15,13 @@
 {% elif platform === "linux" %}
                 "LD_LIBRARY_PATH": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
 {% else %}
-                "PATH": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+                "PATH": "{{ connext_path }}/lib/{{ architecture}};${env:PATH}"
 {% endif %}
             }
         },
         {
             "type": "java",
-            "name": "{{ subscriber_class}}",
+            "name": "Launch {{ subscriber_class}}",
             "request": "launch",
             "mainClass": "{{ subscriber_class}}",
             "env": {
@@ -30,7 +30,7 @@
 {% elif platform === "linux" %}
                 "LD_LIBRARY_PATH": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
 {% else %}
-                "PATH": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+                "PATH": "{{ connext_path }}/lib/{{ architecture}};${env:PATH}"
 {% endif %}
             }
         }

@@ -5,8 +5,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Launch {{ idl_file_name }}_publisher",
+            "name": "Launch {{ idl_file_name }} publisher",
+{% if platform === "windows" %}
+            "type": "cppvsdbg",
+{% else %}
             "type": "cppdbg",
+{% endif %}
             "request": "launch",
             "program": "${workspaceFolder}/build/{{ idl_file_name }}_publisher",
             "args": [],
@@ -22,7 +26,7 @@
                     "value": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
 {% else %}
                     "name": "PATH",
-                    "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+                    "value": "{{ connext_path }}/lib/{{ architecture}};${env:PATH}"
 {% endif %}
                 }
             ],
@@ -30,8 +34,12 @@
             "MIMode": "{{ mi_mode }}"
         },
         {
-            "name": "Launch {{ idl_file_name }}_subscriber",
+            "name": "Launch {{ idl_file_name }} subscriber",
+{% if platform === "windows" %}
+            "type": "cppvsdbg",
+{% else %}
             "type": "cppdbg",
+{% endif %}
             "request": "launch",
             "program": "${workspaceFolder}/build/{{ idl_file_name }}_subscriber",
             "args": [],
@@ -47,7 +55,7 @@
                     "value": "{{ connext_path }}/lib/{{ architecture}}:${env:LD_LIBRARY_PATH}"
 {% else %}
                     "name": "PATH",
-                    "value": "{{ connext_path }}\\lib\\{{ architecture}};${env:PATH}"
+                    "value": "{{ connext_path }}/lib/{{ architecture}};${env:PATH}"
 {% endif %}
                 }
             ],

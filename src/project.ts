@@ -91,7 +91,7 @@ async function generateCMakeFiles(
     if (cmakeConfig.get("generator") != undefined) {
         data.generator = cmakeConfig.get("generator") as string;
     } else if (isWindows()) {
-        data.generator = "Visual Studio";
+        data.generator = "NMake Makefiles";
     } else {
         data.generator = "Unix Makefiles";
     }
@@ -418,7 +418,12 @@ async function customizePublisherAndSubscriberFile(
     }
 
     updatedCode = updatedCode.replace("```" + languageInfo.markupCode, "");
-    updatedCode = updatedCode.replace("```", "");
+
+    // Remove the closing code block and all lines after
+    let index = updatedCode.indexOf("```");
+    if (index != -1) {
+        updatedCode = updatedCode.substring(0, index);
+    }
 
     await writeTextFile(file.fsPath, updatedCode);
 }
@@ -687,7 +692,10 @@ export async function createExample(
                 lowerFileName.endsWith(".launch") ||
                 lowerFileName.endsWith("build.xml") ||
                 lowerFileName.endsWith(".classpath") ||
-                lowerFileName.endsWith(".project")
+                lowerFileName.endsWith(".project") ||
+                lowerFileName.endsWith(".vcxproj") ||
+                lowerFileName.endsWith(".vcxproj.filters") ||
+                lowerFileName.endsWith(".sln")
             ) {
                 try {
                     const fileUri = vscode.Uri.joinPath(

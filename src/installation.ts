@@ -112,7 +112,7 @@ export class Installation {
         architectures: Architecture[],
         defaultInstallation: boolean = false
     ) {
-        this.directory = directory;
+        this.directory = directory.replace(/\\/g, "/");
         this.version = version;
         this.architectures = architectures;
         this.default = defaultInstallation;
