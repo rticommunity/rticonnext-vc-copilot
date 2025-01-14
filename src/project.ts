@@ -592,6 +592,7 @@ export async function createExample(
         // then replace it with bash
         let command = `${defaultInstallation[1].toolEnvCmd} && rtiddsgen \
                     -language ${jsonProject.language} \
+                    -ppDisable \
                     -d ${tempDirWithWorkspace.fsPath} \
                     -example ${exampleArch} ${idlFile.fsPath}`;
         runCommandSync(command);
