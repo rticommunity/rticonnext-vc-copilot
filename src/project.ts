@@ -388,7 +388,8 @@ async function customizePublisherAndSubscriberFile(
     needed, leave the code as is.
 
     Do not provide any explanations of what the changes are. Only provide the
-    updated code.
+    updated code. If the user provides a topic name do not forget to update the
+    topic name in the code.
     
     Instructions:
 
