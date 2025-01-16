@@ -79,6 +79,7 @@ class GlobalState {
         this.lastResponse = null;
 
         // Use ws://localhost:8502 to switch to local server
+        // Use wss://sandbox-chatbot.rti.com to switch to sandbox server
         // Use wss://chatbot.rti.com to switch to production server
         this.selectedIntelligencePlatformUrl = undefined;
     }
