@@ -387,10 +387,14 @@ async function customizePublisherAndSubscriberFile(
     ${pubSubStr} code. Provide the full updated code. If no modifications are 
     needed, leave the code as is.
 
-    Do not provide any explanations of what the changes are. Only provide the
-    updated code. If the user provides a topic name do not forget to update the
-    topic name in the code.
+    Do not provide any explanations of what the changes are. Always provide the 
+    updated code even if it is the same as the original code. 
     
+    If the user provides a topic name do not forget to update the topic name in 
+    the code.
+
+    Use the same topic name in publisher and subscriber.
+
     Instructions:
 
     ${userPrompt}
@@ -418,10 +422,13 @@ async function customizePublisherAndSubscriberFile(
         throw new Error(`Error customizing ${pubSubStr} code.`);
     }
 
+    // Remove lines before the code block
+    let index = updatedCode.indexOf("```" + languageInfo.markupCode);
+    updatedCode = updatedCode.substring(index);
     updatedCode = updatedCode.replace("```" + languageInfo.markupCode, "");
 
     // Remove the closing code block and all lines after
-    let index = updatedCode.indexOf("```");
+    index = updatedCode.indexOf("```");
     if (index != -1) {
         updatedCode = updatedCode.substring(0, index);
     }
