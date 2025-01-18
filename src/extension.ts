@@ -40,7 +40,6 @@ class GlobalState {
     readonly connextAuth0Url: string;
     readonly MAX_HISTORY_LENGTH: number;
     readonly NUM_FOLLOWUPS: number;
-    readonly VALIDATE_CODE_PROMPT_PREFIX: string;
     readonly VALIDATE_CODE_HELP_STRING: string;
     readonly VALIDATE_CODE_WARNING: string;
 
@@ -63,7 +62,6 @@ class GlobalState {
         this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
         this.MAX_HISTORY_LENGTH = 65536;
         this.NUM_FOLLOWUPS = 3;
-        this.VALIDATE_CODE_PROMPT_PREFIX = "Validate previous";
         this.VALIDATE_CODE_HELP_STRING = `\n\n*Click 'Validate Code' to check the XML or Python for errors. The chatbot will try to fix issues with the XML schema, or Python syntax or types. Validation may take up to a minute.*`;
         this.VALIDATE_CODE_WARNING = `\n\n***NOTE:** Although the code has been validated, it may still contain errors. Please review and test the code before using it.*`;
 
@@ -664,24 +662,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(cidpFix);
 
-    // Validate code command
-    let cidpValidate = vscode.commands.registerCommand(
-        "connext-vc-copilot.validate-code",
-        (languages: string) => {
-            const VALIDATE_CODE_PROMPT =
-                globalState.VALIDATE_CODE_PROMPT_PREFIX +
-                " " +
-                languages +
-                " code and provide the updated code";
-            vscode.commands.executeCommand(
-                "workbench.action.chat.open",
-                `@connext ${VALIDATE_CODE_PROMPT}`
-            );
-        }
-    );
-
-    context.subscriptions.push(cidpValidate);
-
     // Create workspace code command
     let cidpWorkspace = vscode.commands.registerCommand(
         "connext-vc-copilot.create-workspace",
@@ -1083,26 +1063,6 @@ export async function activate(context: vscode.ExtensionContext) {
                     showErrorMessage(`Request timed out.`);
                 }
             } else {
-                let validationPrompt = globalState.lastPrompt.includes(
-                    globalState.VALIDATE_CODE_PROMPT_PREFIX
-                );
-                let languages = await getCodeContentInfo(
-                    globalState.lastResponse,
-                    token
-                );
-
-                if (languages.size != 0 && !validationPrompt) {
-                    let languagesString = Array.from(languages).join(", ");
-
-                    response.markdown(globalState.VALIDATE_CODE_HELP_STRING);
-
-                    response.button({
-                        command: "connext-vc-copilot.validate-code",
-                        title: vscode.l10n.t("Validate code"),
-                        arguments: [languagesString],
-                    });
-                }
-
                 let relatedApplication = await getRelatedApplication(
                     [
                         "RTI Admin Console",
@@ -1140,12 +1100,6 @@ export async function activate(context: vscode.ExtensionContext) {
                             arguments: [],
                         });
                     }
-                }
-
-                if (validationPrompt) {
-                    response.markdown(
-                        `\n\n***NOTE:** Although the code has been validated, it may still contain errors. Please review and test the code before using it.*`
-                    );
                 }
             }
 

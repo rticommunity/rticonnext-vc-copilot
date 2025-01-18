@@ -41,10 +41,6 @@
                 "shortTitle": "Fix this"
             },
             {
-                "command": "connext-vc-copilot.validate-code",
-                "title": "Connext: Validate code"
-            },
-            {
                 "command": "connext-vc-copilot.create-workspace",
                 "title": "Connext: Create Workspace"
             },
