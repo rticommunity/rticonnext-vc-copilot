@@ -157,7 +157,7 @@ export async function askQuestionToConnext(
         "http://"
     );
 
-    let uri = `${intelligencePlatformHttpUrl}/api/v1/ask`;
+    let uri = `${intelligencePlatformHttpUrl}/api/v1/copilot/ask`;
 
     let options: fetch.RequestInit = {
         method: "POST",
