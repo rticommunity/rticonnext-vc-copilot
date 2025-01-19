@@ -10,9 +10,9 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { exec } from "child_process";
+import * as xml2js from 'xml2js';
 
-import { showErrorMessage } from "./utils";
+import { showErrorMessage, runCommand } from "./utils";
 
 /**
  * Key used to store the default installation directory for Connext.
@@ -71,9 +71,7 @@ export class Architecture {
         this.default = defaultArch;
 
         /* Replace extension with bash */
-        this.toolEnvCmd = setEnvCmd
-            .replace("zsh", "bash")
-            .replace("tcsh", "bash");
+        this.toolEnvCmd = setEnvCmd;
     }
 }
 
@@ -92,6 +90,11 @@ export class Installation {
     directory: string;
 
     /**
+     * The version of the installation.
+     */
+    version: string | undefined;
+
+    /**
      * The architectures supported by this installation.
      */
     architectures: Architecture[];
@@ -99,15 +102,18 @@ export class Installation {
     /**
      * Creates an instance of Installation.
      * @param directory - The directory where the installation is located.
+     * @param version - The version of the installation.
      * @param architectures - The architectures supported by this installation.
      * @param defaultInstallation - Indicates whether this installation is the default one.
      */
     constructor(
         directory: string,
+        version: string | undefined,
         architectures: Architecture[],
         defaultInstallation: boolean = false
     ) {
-        this.directory = directory;
+        this.directory = directory.replace(/\\/g, "/");
+        this.version = version;
         this.architectures = architectures;
         this.default = defaultInstallation;
     }
@@ -124,6 +130,34 @@ export class Installation {
         }
 
         return names;
+    }
+}
+
+/**
+ * Synchronously retrieves the product version from an XML file.
+ *
+ * @param filePath - The path to the XML file containing the product version information.
+ * @returns The base version as a string if found, otherwise `undefined`.
+ *
+ * @throws Will throw an error if the file cannot be read.
+ */
+function getProductVersionSync(filePath: string): string | undefined {
+    try {
+        const xmlData = fs.readFileSync(filePath, 'utf8');
+        let baseVersion: string | undefined = undefined;
+        const parser = new xml2js.Parser({ explicitArray: false });
+
+        parser.parseString(xmlData, (err, result) => {
+            if (err) {
+                console.error('Error parsing XML:', err);
+                return;
+            }
+            baseVersion = result.rti.host.base_version;
+        });
+
+        return baseVersion;
+    } catch (err) {
+        return undefined;
     }
 }
 
@@ -267,6 +301,9 @@ export function getConnextInstallations(): Installation[] {
 
     for (let dir of installationDirectories) {
         let architecturesNames = findArchitecture(dir);
+
+        let version = getProductVersionSync(path.join(dir, "rti_versions.xml"));
+
         let defaultInstallation = false;
 
         if (defaultInstallationDir == dir) {
@@ -279,7 +316,7 @@ export function getConnextInstallations(): Installation[] {
         }
 
         if (architecturesNames == undefined || architecturesNames.length == 0) {
-            installations.push(new Installation(dir, [], defaultInstallation));
+            installations.push(new Installation(dir, version, [], defaultInstallation));
             continue;
         }
 
@@ -339,7 +376,7 @@ export function getConnextInstallations(): Installation[] {
             }
 
             installations.push(
-                new Installation(dir, architectures, defaultInstallation)
+                new Installation(dir, version, architectures, defaultInstallation)
             );
         }
 
@@ -388,15 +425,13 @@ export function runApplication(
     }
 
     // Use child_process.exec to run the external application
-    exec(command, (err, stdout, stderr) => {
-        if (err) {
-            // Handle the error
-            showErrorMessage(
-                `Error running command: ${err.message}`
-            );
-            return;
-        }
-    });
+    try{
+        runCommand(command);
+    } catch (e: any) {
+        showErrorMessage(
+            `Error running command: ${e.message}`
+        );
+    }
 }
 
 /**

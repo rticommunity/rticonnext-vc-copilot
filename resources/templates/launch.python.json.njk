@@ -1,0 +1,22 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch {{ publisher_file }}",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/{{ publisher_file }}.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Launch {{ subscriber_file }}",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/{{ subscriber_file }}.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}

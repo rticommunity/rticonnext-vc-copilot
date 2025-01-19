@@ -1,0 +1,55 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "Debug/Static",
+            "description": "Debug/Static",
+            "hidden": false,
+            "generator": "{{ generator }}",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
+                "CONNEXTDDS_ARCH": "{{ architecture }}"
+            }
+        },
+        {
+            "name": "Release/Static",
+            "description": "Release/Static",
+            "hidden": false,
+            "generator": "{{ generator }}",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
+                "CONNEXTDDS_ARCH": "{{ architecture }}"
+            }
+        },
+        {
+            "name": "Debug/Shared",
+            "description": "Debug/Shared",
+            "hidden": false,
+            "generator": "{{ generator }}",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
+                "BUILD_SHARED_LIBS": "ON",
+                "CONNEXTDDS_ARCH": "{{ architecture }}"
+            }
+        },
+        {
+            "name": "Release/Shared",
+            "description": "Release/Shared",
+            "hidden": false,
+            "generator": "{{ generator }}",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
+                "BUILD_SHARED_LIBS": "ON",
+                "CONNEXTDDS_ARCH": "{{ architecture }}"
+            }
+        }
+    ]
+}

@@ -23,15 +23,17 @@ import {
 import {
     showErrorMessage,
     showInformationMessage,
+    askQuestion,
 } from "./utils";
 
 import { getPrompt } from "./prompt";
 import { Auth } from "./auth";
 
+import { createExample, initializeWorkspace } from "./project";
+
 class GlobalState {
     readonly MAX_HISTORY_LENGTH: number;
     readonly NUM_FOLLOWUPS: number;
-    readonly VALIDATE_CODE_PROMPT_PREFIX: string;
     readonly VALIDATE_CODE_HELP_STRING: string;
     readonly VALIDATE_CODE_WARNING: string;
 
@@ -48,7 +50,6 @@ class GlobalState {
         // Set to displayName
         this.MAX_HISTORY_LENGTH = 65536;
         this.NUM_FOLLOWUPS = 3;
-        this.VALIDATE_CODE_PROMPT_PREFIX = "Validate previous";
         this.VALIDATE_CODE_HELP_STRING = `\n\n*Click 'Validate Code' to check the XML or Python for errors. The chatbot will try to fix issues with the XML schema, or Python syntax or types. Validation may take up to a minute.*`;
         this.VALIDATE_CODE_WARNING = `\n\n***NOTE:** Although the code has been validated, it may still contain errors. Please review and test the code before using it.*`;
 
@@ -60,6 +61,9 @@ class GlobalState {
         this.lastPrompt = null;
         this.lastResponse = null;
 
+        // Use ws://localhost:8502 to switch to local server
+        // Use wss://sandbox-chatbot.rti.com to switch to sandbox server
+        // Use wss://chatbot.rti.com to switch to production server
         this.selectedIntelligencePlatformUrl = undefined;
     }
 }
@@ -111,36 +115,6 @@ async function waitForCondition(
         }
         await new Promise((resolve) => setTimeout(resolve, checkInterval));
     }
-}
-
-/**
- * Asks a question to a language model and returns the response.
- *
- * @param question - The question to ask the language model.
- * @param token - A cancellation token to cancel the request if needed.
- * @returns A promise that resolves to the response from the language model.
- */
-async function askQuestion(
-    question: string,
-    token: vscode.CancellationToken
-): Promise<string> {
-    const MODEL_SELECTOR: vscode.LanguageModelChatSelector = {
-        vendor: "copilot",
-        family: "gpt-4o",
-    };
-
-    const [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
-
-    const messages = [vscode.LanguageModelChatMessage.User(question)];
-
-    let response = "";
-
-    const chatResponse = await model.sendRequest(messages, {}, token);
-    for await (const fragment of chatResponse.text) {
-        response += fragment;
-    }
-
-    return response;
 }
 
 /**
@@ -454,6 +428,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
         response.markdown(`------------------------------------------------\n`);
         response.markdown(`## Installation ${count}\n`);
         response.markdown(`- *Directory:* \`${installation.directory}\`\n\n`);
+        response.markdown(`- *Version:* \`${installation.version}\`\n\n`);
         response.markdown(
             `- *Default:* \`${installation.default ? "Yes" : "No"}\`\n`
         );
@@ -507,7 +482,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
  *
  * It also creates a chat participant for handling user queries and interacting with the Connext Intelligence Platform.
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     setExtensionContextForInstallation(context);
     globalThis.globalState.extensionUri = context.extensionUri;
     globalThis.globalState.installations = getConnextInstallations();
@@ -582,23 +557,34 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(cidpFix);
 
-    // Validate code command
-    let cidpValidate = vscode.commands.registerCommand(
-        "connext-vc-copilot.validate-code",
-        (languages: string) => {
-            const VALIDATE_CODE_PROMPT =
-                globalState.VALIDATE_CODE_PROMPT_PREFIX +
-                " " +
-                languages +
-                " code and provide the updated code";
-            vscode.commands.executeCommand(
-                "workbench.action.chat.open",
-                `@connext ${VALIDATE_CODE_PROMPT}`
-            );
+    // Create workspace code command
+    let cidpWorkspace = vscode.commands.registerCommand(
+        "connext-vc-copilot.create-workspace",
+        async (
+            response: vscode.ChatResponseStream,
+            configurationVariables: any,
+            tempDir: vscode.Uri
+        ) => {
+            const uri = await vscode.window.showOpenDialog({
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: false,
+                openLabel: "Select Parent Directory",
+            });
+
+            if (uri && uri.length > 0) {
+                const selectedPath = uri[0];
+                initializeWorkspace(
+                    response,
+                    configurationVariables,
+                    selectedPath,
+                    tempDir
+                );
+            }
         }
     );
 
-    context.subscriptions.push(cidpValidate);
+    context.subscriptions.push(cidpWorkspace);
 
     // Run Admin Console
     let cidpRunAdmin = vscode.commands.registerCommand(
@@ -680,6 +666,8 @@ export function activate(context: vscode.ExtensionContext) {
             globalThis.globalState.connectionReady = false
         }
     });
+
+    let extensionContext = context;
 
     // Create a Copilot chat participant
     const chat = vscode.chat.createChatParticipant(
@@ -771,6 +759,16 @@ export function activate(context: vscode.ExtensionContext) {
                 return result;
             } else if (request.command === "openFiles") {
                 useAllOpenFiles = true;
+            } else if (request.command === "newExample") {
+                await createExample(
+                    request.prompt,
+                    extensionContext.extensionPath,
+                    globalThis.globalState.installations,
+                    response,
+                    accessToken,
+                    token
+                );
+                return result;
             }
 
             let socket;
@@ -905,26 +903,6 @@ export function activate(context: vscode.ExtensionContext) {
                     showErrorMessage(`Request timed out.`);
                 }
             } else {
-                let validationPrompt = globalState.lastPrompt.includes(
-                    globalState.VALIDATE_CODE_PROMPT_PREFIX
-                );
-                let languages = await getCodeContentInfo(
-                    globalState.lastResponse,
-                    token
-                );
-
-                if (languages.size != 0 && !validationPrompt) {
-                    let languagesString = Array.from(languages).join(", ");
-
-                    response.markdown(globalState.VALIDATE_CODE_HELP_STRING);
-
-                    response.button({
-                        command: "connext-vc-copilot.validate-code",
-                        title: vscode.l10n.t("Validate code"),
-                        arguments: [languagesString],
-                    });
-                }
-
                 let relatedApplication = await getRelatedApplication(
                     [
                         "RTI Admin Console",
@@ -939,35 +917,29 @@ export function activate(context: vscode.ExtensionContext) {
                 if (relatedApplication != null) {
                     if (relatedApplication == "RTI Admin Console") {
                         response.button({
-                            command: "connext-vc-copilot.start-admin-console",
+                            command: "connext-vc-copilot.run-admin-console",
                             title: vscode.l10n.t("Start Admin Console"),
                             arguments: [],
                         });
                     } else if (relatedApplication == "RTI System Designer") {
                         response.button({
-                            command: "connext-vc-copilot.start-system-designer",
+                            command: "connext-vc-copilot.run-system-designer",
                             title: vscode.l10n.t("Start System Designer"),
                             arguments: [],
                         });
                     } else if (relatedApplication == "RTI Monitor") {
                         response.button({
-                            command: "connext-vc-copilot.start-monitor-ui",
+                            command: "connext-vc-copilot.run-monitor-ui",
                             title: vscode.l10n.t("Start Monitor"),
                             arguments: [],
                         });
                     } else {
                         response.button({
-                            command: "connext-vc-copilot.start-shapes-demo",
+                            command: "connext-vc-copilot.run-shapes-demo",
                             title: vscode.l10n.t("Start Shapes Demo"),
                             arguments: [],
                         });
                     }
-                }
-
-                if (validationPrompt) {
-                    response.markdown(
-                        `\n\n***NOTE:** Although the code has been validated, it may still contain errors. Please review and test the code before using it.*`
-                    );
                 }
             }
 
@@ -1005,7 +977,8 @@ export function activate(context: vscode.ExtensionContext) {
                 result.metadata.command != "startSystemDesigner" &&
                 result.metadata.command != "startMonitorUI" &&
                 result.metadata.command != "startShapesDemo" &&
-                result.metadata.command != "connextInfo"
+                result.metadata.command != "connextInfo" &&
+                result.metadata.command != "newExample"
             ) {
                 return await generateFollowUps(
                     globalState.NUM_FOLLOWUPS,

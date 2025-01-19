@@ -433,6 +433,18 @@ export function getPrompt(
         promptWithContext += EndHumanRestMessage;
     }
 
+    if (rest_api) {
+        promptWithContext += BeginHumanRestMessage;
+    } else {
+        promptWithContext += `${HumanMessage} `;
+    }
+
+    promptWithContext += "If the request requires XML or Python code generation, always validate the code for correctness and functionality. Include the validated code as part of your response.";
+
+    if (rest_api) {
+        promptWithContext += EndHumanRestMessage;
+    }
+
     if (response !== null) {
         if (rest_api) {
             promptWithContext += BeginAiRestMessage;
