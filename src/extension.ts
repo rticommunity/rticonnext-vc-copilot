@@ -11,8 +11,6 @@ import * as vscode from "vscode";
 import io from "socket.io-client";
 import { Socket } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
-import * as fs from "fs";
-import { exec } from "child_process";
 import {
     Installation,
     Architecture,
@@ -26,27 +24,20 @@ import {
     showErrorMessage,
     showInformationMessage,
     askQuestion,
-    makeHttpRequest,
-    CONNEXT_PRODUCT,
 } from "./utils";
 
 import { getPrompt } from "./prompt";
+import { Auth } from "./auth";
 
 import { createExample, initializeWorkspace } from "./project";
 
 class GlobalState {
-    readonly connextUsernameKey: string;
-    readonly connextPasswordKey: string;
-    readonly connextAuth0Url: string;
     readonly MAX_HISTORY_LENGTH: number;
     readonly NUM_FOLLOWUPS: number;
     readonly VALIDATE_CODE_HELP_STRING: string;
     readonly VALIDATE_CODE_WARNING: string;
 
     extensionUri: vscode.Uri;
-    accessCode: string | undefined;
-    storedUsername: string | undefined;
-    storedPassword: string | undefined;
     lastPrompt: string | null;
     lastResponse: string | null;
     installations: Installation[] | undefined;
@@ -57,17 +48,11 @@ class GlobalState {
 
     constructor() {
         // Set to displayName
-        this.connextUsernameKey = "connextUsername";
-        this.connextPasswordKey = "connextPassword";
-        this.connextAuth0Url = "https://dev-6pfajgsd68a3srda.us.auth0.com";
         this.MAX_HISTORY_LENGTH = 65536;
         this.NUM_FOLLOWUPS = 3;
         this.VALIDATE_CODE_HELP_STRING = `\n\n*Click 'Validate Code' to check the XML or Python for errors. The chatbot will try to fix issues with the XML schema, or Python syntax or types. Validation may take up to a minute.*`;
         this.VALIDATE_CODE_WARNING = `\n\n***NOTE:** Although the code has been validated, it may still contain errors. Please review and test the code before using it.*`;
 
-        this.accessCode = undefined;
-        this.storedUsername = undefined;
-        this.storedPassword = undefined;
         this.extensionUri = vscode.Uri.parse(""); // Placeholder value, update when valid value is available
 
         this.socket = undefined;
@@ -89,64 +74,12 @@ declare global {
 
 globalThis.globalState = new GlobalState();
 
-interface Secrets {
-    clientId: string;
-    clientSecret: string;
-}
-
 interface IChatResult extends vscode.ChatResult {
     metadata: {
         command: string | undefined;
         error: boolean;
         cancel: boolean;
     };
-}
-
-/**
- * Asynchronously reads a JSON file and extracts the clientId and clientSecret
- * needed to get the access token using a password grant. Note that even
- * though the client ID and client secret are stored in a JSON file in
- * plaintext, the user cannot get a token without a username and password.
- *
- * @param filePath - The path to the JSON file containing the secrets.
- * @returns A promise that resolves with the extracted secrets.
- *
- * @throws Will reject the promise with an error message if there is an issue reading the file or parsing the JSON.
- *
- * @example
- * ```typescript
- * getSecrets('/path/to/secrets.json')
- *   .then(secrets => {
- *     console.log(secrets.clientId);
- *     console.log(secrets.clientSecret);
- *   })
- *   .catch(error => {
- *     console.error(error);
- *   });
- * ```
- */
-async function getSecrets(filePath: string): Promise<Secrets> {
-    return new Promise((resolve, reject) => {
-        fs.readFile(filePath, "utf8", (err, data) => {
-            if (err) {
-                return reject("Error reading file: " + err);
-            }
-
-            try {
-                // Parse the JSON data
-                const secrets = JSON.parse(data);
-
-                // Extract the secrets
-                const clientId = secrets.BOT_API_CLIENT_ID.value;
-                const clientSecret = secrets.BOT_API_CLIENT_SECRET.value;
-
-                // Resolve with the extracted secrets
-                resolve({ clientId, clientSecret });
-            } catch (parseError) {
-                reject("Error parsing JSON: " + parseError);
-            }
-        });
-    });
 }
 
 /**
@@ -534,20 +467,6 @@ function connextInfo(response: vscode.ChatResponseStream) {
 }
 
 /**
- * Logs out the user by deleting stored credentials and resetting global state.
- *
- * @param context - The VS Code extension context which provides access to secrets storage.
- * @returns A promise that resolves when the logout process is complete.
- */
-async function logout(context: vscode.ExtensionContext) {
-    await context.secrets.delete(globalThis.globalState.connextUsernameKey);
-    globalThis.globalState.storedUsername = undefined;
-    await context.secrets.delete(globalThis.globalState.connextPasswordKey);
-    globalThis.globalState.storedPassword = undefined;
-    globalThis.globalState.accessCode = undefined;
-}
-
-/**
  * Activates the extension.
  *
  * This method is called when your extension is activated
@@ -577,49 +496,21 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Initialize the authentication provider
+    Auth.setup(context).catch((error) => {
+        showErrorMessage(`Error setting up the authentication provider: ${error}`);
+    });
+
     // Register the login command
     let cidpLogin = vscode.commands.registerCommand(
         "connext-vc-copilot.login",
         async () => {
-            await logout(context);
-
-            // Ask for username if not stored
-            const username = await vscode.window.showInputBox({
-                prompt: "Enter your username",
-                placeHolder: "Username",
-                ignoreFocusOut: true,
-            });
-
-            // Ask for password if not stored
-            const password = await vscode.window.showInputBox({
-                prompt: "Enter your password",
-                placeHolder: "Password",
-                password: true, // This will hide the password input
-                ignoreFocusOut: true,
-            });
-
-            // Check if user provided both credentials
-            if (username && password) {
-                // Store credentials in global state
-                await context.secrets.store(
-                    globalThis.globalState.connextUsernameKey,
-                    username
-                );
-                await context.secrets.store(
-                    globalThis.globalState.connextPasswordKey,
-                    password
-                );
-                showInformationMessage(
-                    `Credentials saved for user: ${username}`
-                );
-            } else {
-                showErrorMessage(`Both username and password are required.`);
-                return false;
+            try {
+                await Auth.login();
+                showInformationMessage(`Successfully logged in.`);
+            } catch (error) {
+                showErrorMessage(`Error logging in: ${error}`);
             }
-
-            globalThis.globalState.storedUsername = username;
-            globalThis.globalState.storedPassword = password;
-            return true;
         }
     );
 
@@ -629,8 +520,12 @@ export async function activate(context: vscode.ExtensionContext) {
     let cidpLogout = vscode.commands.registerCommand(
         "connext-vc-copilot.logout",
         async () => {
-            await logout(context);
-            showInformationMessage(`Credentials have been cleared.`);
+            try {
+                await Auth.logout();
+                showInformationMessage(`Successfully logged out.`);
+            } catch (error) {
+                showErrorMessage(`Error logging out: ${error}`);
+            }
         }
     );
 
@@ -760,30 +655,17 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    (async () => {
-        try {
-            // Delete non-secure keys that were used in previous releases
-            // if for some reason they are still stored
-            await context.globalState.update(
-                globalThis.globalState.connextUsernameKey,
-                undefined
-            );
-            await context.globalState.update(
-                globalThis.globalState.connextPasswordKey,
-                undefined
-            );
-
-            globalThis.globalState.storedUsername = await context.secrets.get(
-                globalThis.globalState.connextUsernameKey
-            );
-            globalThis.globalState.storedPassword = await context.secrets.get(
-                globalThis.globalState.connextPasswordKey
-            );
-        } catch (error) {
-            globalThis.globalState.storedUsername = undefined;
-            globalThis.globalState.storedPassword = undefined;
+    // If we detect that the accessToken has changed, we need to disconnect
+    // the socket, otherwise the server will reject the connection because the
+    // token is invalid (expired).
+    context.secrets.onDidChange(event => {
+        if (event.key === "accessToken"
+            && globalThis.globalState.socket != undefined) {
+            globalThis.globalState.socket.disconnect();
+            globalThis.globalState.socket = undefined;
+            globalThis.globalState.connectionReady = false
         }
-    })();
+    });
 
     let extensionContext = context;
 
@@ -839,63 +721,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
             globalState.lastPrompt = request.prompt;
 
-            if (
-                globalThis.globalState.storedUsername === undefined ||
-                globalThis.globalState.storedPassword === undefined
-            ) {
-                var success = await vscode.commands.executeCommand(
-                    "connext-vc-copilot.login"
-                );
-
-                if (!success) {
-                    showInformationMessage(
-                        `Please log in to ${CONNEXT_PRODUCT} to continue.`
+            // If we don't have an access token, this means the user has not
+            // logged in yet, otherwise this will always return a valid token.
+            let accessToken = await Auth.getAccessToken();
+            if (!accessToken) {
+                showInformationMessage(`No access token found. Try to log in.`);
+                try {
+                    await vscode.commands.executeCommand(
+                        "connext-vc-copilot.login"
                     );
+                    accessToken = await Auth.getAccessToken();
+                } catch (error) {
+                    showErrorMessage(`Error logging in: ${error}`);
                     result.metadata.error = true;
                     return result;
                 }
-            }
-
-            if (globalThis.globalState.accessCode === undefined) {
-                // Get secrets
-                const filePath = vscode.Uri.joinPath(
-                    globalThis.globalState.extensionUri,
-                    "secrets.json"
-                ).fsPath;
-                const { clientId, clientSecret } = await getSecrets(filePath);
-
-                // Get access token
-                const uri =
-                    globalThis.globalState.connextAuth0Url + "/oauth/token";
-                const jsonPayload = {
-                    grant_type: "password",
-                    username: globalThis.globalState.storedUsername,
-                    password: globalThis.globalState.storedPassword,
-                    audience: "https://chatbot.rti.com/api/v1",
-                    scope: "ask:question session:create session:delete session:update",
-                    client_id: clientId,
-                    client_secret: clientSecret,
-                };
-                const options = {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(jsonPayload),
-                };
-
-                const jsonResponse = await makeHttpRequest(uri, options);
-
-                if (jsonResponse == undefined || jsonResponse.error) {
-                    await logout(extensionContext);
-                    showErrorMessage(
-                        `Error getting access token: ${jsonResponse.error_description}`
-                    );
-                    result.metadata.error = true;
-                    return result;
-                }
-
-                globalThis.globalState.accessCode = jsonResponse.access_token;
             }
 
             if (request.command === "startAdminConsole") {
@@ -925,7 +765,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     extensionContext.extensionPath,
                     globalThis.globalState.installations,
                     response,
-                    globalThis.globalState.accessCode,
+                    accessToken,
                     token
                 );
                 return result;
@@ -946,7 +786,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 globalThis.globalState.socket = io(intelligencePlatformUrl, {
                     extraHeaders: {
-                        authorization: `bearer ${globalThis.globalState.accessCode}`,
+                        authorization: `bearer ${accessToken}`,
                     },
                     reconnectionAttempts: 3,
                 });
