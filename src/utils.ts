@@ -67,6 +67,42 @@ export async function askQuestion(
 }
 
 /**
+ * Extracts the content of a specified code block from a Markdown string.
+ *
+ * @param markdown - The full Markdown string to search within.
+ * @param markdownCode - The language identifier of the code block to extract (e.g., "typescript", "javascript").
+ * @returns The content of the specified code block, or an empty string if the code block is not found.
+ */
+export function extractCodeBlocksFromMarkdown(
+    markdown: string,
+    markdownCode: string
+): string {
+    // Construct the opening code block delimiter
+    const codeBlockStart = "```" + markdownCode;
+    const codeBlockEnd = "```";
+
+    // Find the starting index of the desired code block
+    const startIndex = markdown.indexOf(codeBlockStart);
+    if (startIndex === -1) {
+        // Return an empty string if the specified code block is not found
+        return "";
+    }
+
+    // Extract content after the opening code block
+    const afterStart = markdown.substring(startIndex + codeBlockStart.length);
+
+    // Find the closing code block delimiter
+    const endIndex = afterStart.indexOf(codeBlockEnd);
+    if (endIndex === -1) {
+        // Return everything after the opening if no closing delimiter is found
+        return afterStart.trim();
+    }
+
+    // Extract and return the code block content
+    return afterStart.substring(0, endIndex).trim();
+}
+
+/**
  * Asks a question to a language model and returns the response as a JSON object.
  *
  * @param question - The question to ask the language model.
@@ -81,13 +117,14 @@ export async function askQuestionWithJsonResponse(
     let jsonObject = undefined;
 
     try {
-        response = response.replace("```json", "");
-        response = response.replace("```", "");
+        response = extractCodeBlocksFromMarkdown(response, "json");
+
+        if (response === "") {
+            return undefined;
+        }
+        
         jsonObject = JSON.parse(response);
     } catch (e: any) {
-        showErrorMessage(
-            `Error parsing JSON response: ${e.message}`
-        );
         return undefined;
     }
 

@@ -33,6 +33,7 @@ import {
     getLanguageInfo,
     readTextFile,
     writeTextFile,
+    extractCodeBlocksFromMarkdown
 } from "./utils";
 import { error } from "console";
 import { json } from "stream/consumers";
@@ -422,16 +423,9 @@ async function customizePublisherAndSubscriberFile(
         throw new Error(`Error customizing ${pubSubStr} code.`);
     }
 
-    // Remove lines before the code block
-    let index = updatedCode.indexOf("```" + languageInfo.markupCode);
-    updatedCode = updatedCode.substring(index);
-    updatedCode = updatedCode.replace("```" + languageInfo.markupCode, "");
-
-    // Remove the closing code block and all lines after
-    index = updatedCode.indexOf("```");
-    if (index != -1) {
-        updatedCode = updatedCode.substring(0, index);
-    }
+    updatedCode = extractCodeBlocksFromMarkdown(
+        updatedCode,
+        languageInfo.markupCode);
 
     await writeTextFile(file.fsPath, updatedCode);
 }
@@ -531,6 +525,10 @@ export async function createExample(
             cancel_token
         );
 
+        if (jsonProject == undefined) {
+            throw new Error("Error analyzing request.");
+        }
+
         jsonProject["connext_path"] = defaultInstallation[0].directory;
         jsonProject["architecture"] = defaultInstallation[1].name;
         jsonProject["connext_version"] = defaultInstallation[0].version;
@@ -558,8 +556,9 @@ export async function createExample(
         stream.progress("Generating IDL file ...");
 
         let idlType = await askQuestionToConnext(
-            `Generate a IDL file based in the description in the following prompt.
-            Provide only the IDL.
+            `Generate an IDL file based in the description provided in the 
+            following prompt. Respond with only the IDL code enclosed in a 
+            code block formatted as \`\`\`idl \`\`\`.
             Prompt: ${prompt}`,
             accessCode,
             cancel_token
@@ -569,8 +568,7 @@ export async function createExample(
             throw new Error("Error generating IDL file.");
         }
 
-        idlType = idlType.replace("```idl", "");
-        idlType = idlType.replace("```", "");
+        idlType = extractCodeBlocksFromMarkdown(idlType, "idl");
 
         // Write IDL file to the temporary directory
         const idlFile = vscode.Uri.joinPath(
