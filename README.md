@@ -1,19 +1,18 @@
 # Welcome to Connext for Github Copilot
 
 This Visual Code extension brings the power of 
-[Connext Chatbot](https://chatbot.rti.com/) to Github Copilot Chat.
-
-For documentation on how to use Connext Chatbot, please visit the
-[Connext Chatbot documentation](https://chatbot.rti.com/static/doc/html/getting_started.html).
+Connext Intelligence to Github Copilot Chat.
 
 To access the Connext expert, simply type `@connext` followed by your 
-question in the Copilot chat window.
+question in the Copilot chat window. Once you type `@connext`, it will 
+stay active allowing you to ask multiple questions without having to type 
+`@connext` again.
 
 ## Requirements
 
 To access the Connext expert, you need the following:
 
-* An account on [Connext Chatbot](https://chatbot.rti.com/)
+* An account on [Connext Intelligence](https://chatbot.rti.com/)
 * A Copilot license
 
 You will also need to install the GitHub Copilot Chat extension.
@@ -68,6 +67,11 @@ The available commands are:
     installation.
 * `/startMonitorUI`: Opens the RTI Monitor UI using the default installation.
 * `/startShapesDemo`: Starts the RTI Shapes Demo using the default installation.
+* `/newExample`: It generates a new example project using the default
+    installation for a type and language of your choice. It also allows you
+    to change the publisher and subscriber code. This command uses the rtiddsgen
+    tool to generate the code for the example. This command is great to 
+    inspect and play with the generated code and see how it works.
 
-The commands that start tools will fail if there is no default installation
-configured.
+The commands that start tools and generate a new example will fail if there is 
+no default installation configured.
