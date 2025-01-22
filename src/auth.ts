@@ -133,7 +133,7 @@ export class Auth {
             const margin = 600; // 10 min
 
             if (currentTime + margin > decodedToken.exp) {
-            // If the token is expired, or about to expire, refresh it
+                // If the token is expired, or about to expire, refresh it
                 accessToken = await this.refreshAccessToken();
             }
 
@@ -211,10 +211,7 @@ export class Auth {
             });
 
             const newAccessToken = response.data.access_token;
-            const newRefreshToken = response.data.refresh_token;
-
             await this.context.secrets.store("accessToken", newAccessToken);
-            await this.context.secrets.store("refreshToken", newRefreshToken);
 
             return newAccessToken;
         } catch (error: any) {
