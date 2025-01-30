@@ -486,6 +486,7 @@ export async function getHighestDotnetFramework(): Promise<string | undefined> {
 interface LanguageInfo {
     name: string;
     extension: string;
+    headerExtension: string;
     markupCode: string;
 }
 
@@ -493,22 +494,23 @@ interface LanguageInfo {
  * Retrieves information about a given programming language.
  *
  * @param language - The name of the programming language.
- * @returns An object containing the language name, file extension, and a markup code string, or `undefined` if the language is not recognized.
+ * @returns An object containing the language name, file extension, header file extension, and a markup code string, or `undefined` if the language is not recognized.
  */
 export function getLanguageInfo(language: string): LanguageInfo | undefined {
-    const extensionMap: { [key: string]: { extension: string; markupCode: string } } = {
-        "Java": { extension: "java", markupCode: "java" },
-        "C#": { extension: "cs", markupCode: "cs" },
-        "C": { extension: "c", markupCode: "c" },
-        "C++98": { extension: "cxx", markupCode: "cpp" },
-        "C++11": { extension: "cxx", markupCode: "cpp" },
-        "Python": { extension: "py", markupCode: "python" }
+    const extensionMap: { [key: string]: { extension: string; headerExtension: string; markupCode: string } } = {
+        "Java": { extension: "java", headerExtension: "java", markupCode: "java" },
+        "C#": { extension: "cs", headerExtension: "cs", markupCode: "cs" },
+        "C": { extension: "c", headerExtension: "h", markupCode: "c" },
+        "C++98": { extension: "cxx", headerExtension: "h", markupCode: "cpp" },
+        "C++11": { extension: "cxx", headerExtension: "hpp", markupCode: "cpp" },
+        "Python": { extension: "py", headerExtension: "py", markupCode: "python" }
     };
 
     if (language in extensionMap) {
         return {
             name: language,
             extension: extensionMap[language].extension,
+            headerExtension: extensionMap[language].headerExtension,
             markupCode: extensionMap[language].markupCode
         };
     }

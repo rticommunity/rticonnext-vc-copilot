@@ -285,14 +285,14 @@ async function generateCSProjectFiles(
 }
 
 /**
- * Retrieves the publisher and subscriber files for a given language within a workspace.
+ * Retrieves the publisher, subscriber, and type files for a given language within a workspace.
  *
  * @param workspaceUri - The URI of the workspace to search within.
  * @param language - The programming language to filter files by.
- * @returns A promise that resolves to an array containing the paths of the publisher and subscriber files.
+ * @returns A promise that resolves to an array containing the paths of the publisher, subscriber, and type files.
  * @throws Will throw an error if the language is unexpected, if there is an error reading the directory, or if the publisher or subscriber files cannot be found.
  */
-export async function getPublisherAndSubscriberFile(
+export async function getPublisherSubscriberAndTypeFile(
     workspaceUri: vscode.Uri,
     language: string
 ): Promise<string[]> {
@@ -310,7 +310,9 @@ export async function getPublisherAndSubscriberFile(
 
     let publisherFile = undefined;
     let subscriberFile = undefined;
+    let typeFileName = undefined;
 
+    // Extract the string before _publisher
     if (
         language == "Python" ||
         language == "C" ||
@@ -336,7 +338,24 @@ export async function getPublisherAndSubscriberFile(
         throw new Error(`Error finding ${language} files.`);
     }
 
-    return [publisherFile[0], subscriberFile[0]];
+    if (
+        language == "Python" ||
+        language == "C" ||
+        language == "C++98" ||
+        language == "C++11"
+    ) {
+        typeFileName = publisherFile[0].replace(
+            `_publisher.${languageInfo.extension}`,
+            `.${languageInfo.headerExtension}`
+        );
+    } else {
+        typeFileName = publisherFile[0].replace(
+            `Publisher.${languageInfo.extension}`,
+            `.${languageInfo.headerExtension}`
+        );
+    }
+
+    return [publisherFile[0], subscriberFile[0], typeFileName];
 }
 
 /**
@@ -353,20 +372,19 @@ export async function getPublisherAndSubscriberFile(
 async function customizePublisherAndSubscriberFile(
     publisher: boolean,
     workspaceUri: vscode.Uri,
-    idlFileName: string,
     language: string,
     userPrompt: string,
     accessCode: string,
     cancel_token: vscode.CancellationToken
 ) {
-    let pubAndSubFiles = await getPublisherAndSubscriberFile(
+    let pubSubAndTypeFiles = await getPublisherSubscriberAndTypeFile(
         workspaceUri,
         language
     );
 
     let file = vscode.Uri.joinPath(
         workspaceUri,
-        publisher ? pubAndSubFiles[0] : pubAndSubFiles[1]
+        publisher ? pubSubAndTypeFiles[0] : pubSubAndTypeFiles[1]
     );
 
     let languageInfo = getLanguageInfo(language);
@@ -377,14 +395,14 @@ async function customizePublisherAndSubscriberFile(
 
     let fileContent = await readTextFile(file.fsPath);
 
-    let idlFile = vscode.Uri.joinPath(workspaceUri, idlFileName);
+    let typeFile = vscode.Uri.joinPath(workspaceUri, pubSubAndTypeFiles[2]);
 
-    let idlFileContent = await readTextFile(idlFile.fsPath);
+    let typeFileContent = await readTextFile(typeFile.fsPath);
 
     let pubSubStr = publisher ? "publisher" : "subscriber";
 
-    let customizePrompt = `Based on the provided instructions and the IDL type 
-    definition, determine if any modifications are needed to the provided 
+    let customizePrompt = `Based on the provided instructions and the provided 
+    type definitions, determine if any modifications are needed to the provided 
     ${pubSubStr} code. Provide the full updated code. If no modifications are 
     needed, leave the code as is.
 
@@ -396,14 +414,18 @@ async function customizePublisherAndSubscriberFile(
 
     Use the same topic name in publisher and subscriber.
 
+    If the user ask you to populate the a sample of the topic type
+    use the type definition provided in the prompt to figure out the
+    fields that need to be populated.
+
     Instructions:
 
     ${userPrompt}
 
-    IDL type definition:
+    Type definition:
 
-    \`\`\`idl
-    ${idlFileContent}
+    \`\`\`${languageInfo.markupCode}
+    ${typeFileContent}
     \`\`\`
 
     Input ${pubSubStr} Code:
@@ -608,7 +630,7 @@ export async function createExample(
                     -example ${exampleArch} ${idlFile.fsPath}`;
         runCommandSync(command);
 
-        let pubSubFiles = await getPublisherAndSubscriberFile(
+        let pubSubFiles = await getPublisherSubscriberAndTypeFile(
             tempDirWithWorkspace,
             jsonProject.language
         );
@@ -663,7 +685,6 @@ export async function createExample(
         await customizePublisherAndSubscriberFile(
             true,
             tempDirWithWorkspace,
-            jsonProject.idl_file_name,
             jsonProject.language,
             prompt,
             accessCode,
@@ -675,7 +696,6 @@ export async function createExample(
         await customizePublisherAndSubscriberFile(
             false,
             tempDirWithWorkspace,
-            jsonProject.idl_file_name,
             jsonProject.language,
             prompt,
             accessCode,
