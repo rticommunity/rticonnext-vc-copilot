@@ -26,7 +26,7 @@ import {
     askQuestion,
 } from "./utils";
 
-import { getPrompt } from "./prompt";
+import { getPrompt, getGenerateSystemXmlModelPrompt } from "./prompt";
 import { Auth } from "./auth";
 
 import { createExample, initializeWorkspace } from "./project";
@@ -634,6 +634,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(cidpShapes);
 
+    // Draw system
+    let cidpDrawSystem = vscode.commands.registerCommand(
+        "connext-vc-copilot.draw-system",
+        () => {
+            vscode.commands.executeCommand('hediet.vscode-drawio.newDiagram');
+        }
+    );
+
+    context.subscriptions.push(cidpDrawSystem);
+
     // Select installation
     let selectInstallation = vscode.commands.registerCommand(
         "connext-vc-copilot.select-installation",
@@ -721,6 +731,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
             globalState.lastPrompt = request.prompt;
 
+            if (request.command === "generateSystemXmlModel") {
+                globalState.lastPrompt = getGenerateSystemXmlModelPrompt();
+                useAllOpenFiles = true;
+            }
+
             // If we don't have an access token, this means the user has not
             // logged in yet, otherwise this will always return a valid token.
             let accessToken = await Auth.getAccessToken();
@@ -753,6 +768,10 @@ export async function activate(context: vscode.ExtensionContext) {
             } else if (request.command === "startShapesDemo") {
                 runApplicationCommand("rtishapesdemo");
                 response.markdown("Starting RTI Shapes Demo...");
+                return result;
+            } else if (request.command === "drawSystem") {
+                response.markdown("Opening draw.io...");
+                vscode.commands.executeCommand('connext-vc-copilot.draw-system');
                 return result;
             } else if (request.command === "connextInfo") {
                 connextInfo(response);
@@ -893,7 +912,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     responseReceived ||
                     !globalThis.globalState.connectionReady ||
                     token.isCancellationRequested,
-                120000,
+                180000,
                 100
             );
 
@@ -977,6 +996,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 result.metadata.command != "startSystemDesigner" &&
                 result.metadata.command != "startMonitorUI" &&
                 result.metadata.command != "startShapesDemo" &&
+                result.metadata.command != "drawSystem" &&
+                result.metadata.command != "generateSystemXmlModel" &&
                 result.metadata.command != "connextInfo" &&
                 result.metadata.command != "newExample"
             ) {

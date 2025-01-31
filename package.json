@@ -17,7 +17,8 @@
     ],
     "activationEvents": [],
     "extensionDependencies": [
-        "github.copilot-chat"
+        "github.copilot-chat",
+        "hediet.vscode-drawio"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -55,6 +56,14 @@
             {
                 "command": "connext-vc-copilot.run-shapes-demo",
                 "title": "Connext: Run RTI Shapes Demo"
+            },
+            {
+                "command": "connext-vc-copilot.draw-system",
+                "title": "Connext: Draw System"
+            },
+            {
+                "command": "connext-vc-copilot.generate-system-xml-model",
+                "title": "Connext: Generate System XML model"
             }
         ],
         "chatParticipants": [
@@ -79,6 +88,14 @@
                     {
                         "name": "startShapesDemo",
                         "description": "Start RTI Shapes Demo"
+                    },
+                    {
+                        "name": "drawSystem",
+                        "description": "Draw a system diagram"
+                    },
+                    {
+                        "name": "generateSystemXmlModel",
+                        "description": "Generate a System XML model from a diagram"
                     },
                     {
                         "name": "connextInfo",

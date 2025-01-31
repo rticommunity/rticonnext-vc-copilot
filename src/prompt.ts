@@ -466,3 +466,20 @@ export function getPrompt(
 
     return promptWithContext;
 }
+
+export function getGenerateSystemXmlModelPrompt(): string {
+    return `**Generate a complete and valid RTI DDS system configuration in 
+    OMG XML from the drawio diagram in the open files.** 
+    
+    The response must strictly include the validated XML code. The system for 
+    the input description should incorporate the following components:
+
+    - Data types
+    - QoS settings
+    - Domain
+    - Topics
+    - Data writers
+    - Data readers
+    - Any additional elements required for a fully operational RTI DDS system
+    `
+}
