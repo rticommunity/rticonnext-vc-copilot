@@ -10,7 +10,9 @@
 import * as vscode from "vscode";
 import fetch from "node-fetch";
 import { exec, execSync } from "child_process";
-import * as fs from 'fs/promises';
+import * as fs from "fs/promises";
+import * as fsSync from "fs";
+import { isBinaryFileSync } from "isbinaryfile";
 
 export const CONNEXT_PRODUCT = "Connext for Github Copilot";
 
@@ -20,9 +22,7 @@ export const CONNEXT_PRODUCT = "Connext for Github Copilot";
  * @param message - The error message to be displayed.
  */
 export function showErrorMessage(message: string) {
-    vscode.window.showErrorMessage(
-        `${CONNEXT_PRODUCT}: ${message}`
-    );
+    vscode.window.showErrorMessage(`${CONNEXT_PRODUCT}: ${message}`);
 }
 
 /**
@@ -31,9 +31,7 @@ export function showErrorMessage(message: string) {
  * @param message - The message to be displayed.
  */
 export function showInformationMessage(message: string) {
-    vscode.window.showInformationMessage(
-        `${CONNEXT_PRODUCT}: ${message}`
-    );
+    vscode.window.showInformationMessage(`${CONNEXT_PRODUCT}: ${message}`);
 }
 
 /**
@@ -103,6 +101,29 @@ export function extractCodeBlocksFromMarkdown(
 }
 
 /**
+ * Checks if the given file path corresponds to a supported image file.
+ *
+ * @param filePath - The path of the file to check.
+ * @returns `true` if the file has a supported image extension, `false` otherwise.
+ */
+export function isSupportedImageFile(filePath: string): boolean {
+    const supportedImageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+    const extension = filePath
+        .substring(filePath.lastIndexOf("."))
+        .toLowerCase();
+    return supportedImageExtensions.includes(extension);
+}
+
+/**
+ * Returns a list of supported image file extensions.
+ *
+ * @returns {string[]} An array of strings representing the supported image file extensions.
+ */
+export function supportedImageExtensions(): string[] {
+    return [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+}
+
+/**
  * Asks a question to a language model and returns the response as a JSON object.
  *
  * @param question - The question to ask the language model.
@@ -122,7 +143,7 @@ export async function askQuestionWithJsonResponse(
         if (response === "") {
             return undefined;
         }
-        
+
         jsonObject = JSON.parse(response);
     } catch (e: any) {
         return undefined;
@@ -146,7 +167,9 @@ export async function makeHttpRequest(
         const response = await fetch(uri, options);
 
         if (!response.ok) {
-            showErrorMessage(`HTTP request failed with status ${response.status}`);
+            showErrorMessage(
+                `HTTP request failed with status ${response.status}`
+            );
             return undefined;
         }
 
@@ -242,9 +265,7 @@ export async function askQuestionToConnextWithJsonResponse(
         response = response.replace("```", "");
         jsonObject = JSON.parse(response);
     } catch (e: any) {
-        showErrorMessage(
-            `Error parsing JSON response: ${e.message}`
-        );
+        showErrorMessage(`Error parsing JSON response: ${e.message}`);
         return undefined;
     }
 
@@ -280,13 +301,13 @@ export function isLinux() {
 
 /**
  * Returns the default shell for the current operating system.
- * 
+ *
  * On Windows, it returns the value of the `ComSpec` environment variable if set,
  * otherwise it defaults to "cmd.exe".
- * 
+ *
  * On Unix-like systems, it returns the value of the `SHELL` environment variable if set,
  * otherwise it defaults to "/bin/bash".
- * 
+ *
  * @returns {string} The default shell for the current operating system.
  */
 export function getDefaultShell() {
@@ -301,18 +322,14 @@ export function getDefaultShell() {
  * @param command - The command to execute.
  * @throws Will throw an error if the command execution fails.
  */
-export function runCommand(
-    command: string,
-) {
+export function runCommand(command: string) {
     const shell = getDefaultShell();
 
     // Use child_process.exec to run the external application
     exec(command, { shell }, (err, stdout, stderr) => {
         if (err) {
             // Handle the error
-            throw new Error(
-                `Error running command: ${err.message}`
-            );
+            throw new Error(`Error running command: ${err.message}`);
         }
     });
 }
@@ -327,7 +344,7 @@ export function runCommandSync(command: string) {
     try {
         const shell = getDefaultShell();
         const output = execSync(command, { shell });
-    } catch (err : any) {
+    } catch (err: any) {
         throw new Error(`Error running command: ${err.message}`);
     }
 }
@@ -339,19 +356,25 @@ export function runCommandSync(command: string) {
  * @param relativePath - The relative path from the initial directory (default is an empty string).
  * @returns A promise that resolves to an array of tuples, each containing a file path and its type.
  */
-export async function readDirectoryRecursive(dir: vscode.Uri, relativePath: string = ''): Promise<[string, vscode.FileType][]> {
+export async function readDirectoryRecursive(
+    dir: vscode.Uri,
+    relativePath: string = ""
+): Promise<[string, vscode.FileType][]> {
     let results: [string, vscode.FileType][] = [];
     const entries = await vscode.workspace.fs.readDirectory(dir);
 
     for (const [name, type] of entries) {
         const fullPath = relativePath ? `${relativePath}/${name}` : name;
-        
+
         if (type === vscode.FileType.Directory) {
             const subDirUri = vscode.Uri.joinPath(dir, name);
-            const subDirFiles = await readDirectoryRecursive(subDirUri, fullPath);
+            const subDirFiles = await readDirectoryRecursive(
+                subDirUri,
+                fullPath
+            );
             results = results.concat(subDirFiles);
         }
-        
+
         results.push([fullPath, type]);
     }
 
@@ -395,7 +418,7 @@ export function getPlatformStr() {
  */
 async function getAvailableDotnetSDKVersions(): Promise<string[]> {
     return new Promise((resolve, reject) => {
-        exec('dotnet --list-sdks', (error, stdout, stderr) => {
+        exec("dotnet --list-sdks", (error, stdout, stderr) => {
             if (error) {
                 reject(`Error executing command: ${error.message}`);
                 return;
@@ -408,10 +431,10 @@ async function getAvailableDotnetSDKVersions(): Promise<string[]> {
 
             // Parse the output
             const sdks = stdout
-                .split('\n') // Split by line
-                .map(line => line.trim()) // Remove leading/trailing spaces
-                .filter(line => line) // Remove empty lines
-                .map(line => {
+                .split("\n") // Split by line
+                .map((line) => line.trim()) // Remove leading/trailing spaces
+                .filter((line) => line) // Remove empty lines
+                .map((line) => {
                     const match = line.match(/^([\d\.]+) \[(.*)\]$/);
                     return match ? match[1] : null; // Extract version
                 })
@@ -438,7 +461,7 @@ function mapVersionToFramework(version: string): string | undefined {
         "8": "net8",
         "7": "net7",
         "6": "net6",
-        "5": "net5"
+        "5": "net5",
     };
 
     return versionMap[majorVersion];
@@ -497,13 +520,31 @@ interface LanguageInfo {
  * @returns An object containing the language name, file extension, header file extension, and a markup code string, or `undefined` if the language is not recognized.
  */
 export function getLanguageInfo(language: string): LanguageInfo | undefined {
-    const extensionMap: { [key: string]: { extension: string; headerExtension: string; markupCode: string } } = {
-        "Java": { extension: "java", headerExtension: "java", markupCode: "java" },
+    const extensionMap: {
+        [key: string]: {
+            extension: string;
+            headerExtension: string;
+            markupCode: string;
+        };
+    } = {
+        Java: {
+            extension: "java",
+            headerExtension: "java",
+            markupCode: "java",
+        },
         "C#": { extension: "cs", headerExtension: "cs", markupCode: "cs" },
-        "C": { extension: "c", headerExtension: "h", markupCode: "c" },
+        C: { extension: "c", headerExtension: "h", markupCode: "c" },
         "C++98": { extension: "cxx", headerExtension: "h", markupCode: "cpp" },
-        "C++11": { extension: "cxx", headerExtension: "hpp", markupCode: "cpp" },
-        "Python": { extension: "py", headerExtension: "py", markupCode: "python" }
+        "C++11": {
+            extension: "cxx",
+            headerExtension: "hpp",
+            markupCode: "cpp",
+        },
+        Python: {
+            extension: "py",
+            headerExtension: "py",
+            markupCode: "python",
+        },
     };
 
     if (language in extensionMap) {
@@ -511,7 +552,7 @@ export function getLanguageInfo(language: string): LanguageInfo | undefined {
             name: language,
             extension: extensionMap[language].extension,
             headerExtension: extensionMap[language].headerExtension,
-            markupCode: extensionMap[language].markupCode
+            markupCode: extensionMap[language].markupCode,
         };
     }
 
@@ -526,13 +567,42 @@ export function getLanguageInfo(language: string): LanguageInfo | undefined {
  * @throws Will throw an error if the file cannot be read.
  */
 export async function readTextFile(filePath: string): Promise<string> {
-    try {
-        const content = await fs.readFile(filePath, "utf-8");
-        return content;
-    } catch (error: any) {
-        console.error(`Error reading file: ${error.message}`);
-        throw error;
-    }
+    const content = await fs.readFile(filePath, "utf-8");
+    return content;
+}
+
+/**
+ * Reads a binary file and returns its content as a Buffer.
+ *
+ * @param filePath - The path to the binary file to be read.
+ * @returns A promise that resolves to a Buffer containing the file's content.
+ */
+export async function readBinaryFileAdBase64(
+    filePath: string
+): Promise<string> {
+    const content = await fs.readFile(filePath);
+    return content.toString("base64");
+}
+
+/**
+ * Reads a binary file and returns its content encoded in base64 format.
+ *
+ * @param filePath - The path to the binary file to be read.
+ * @returns The content of the file encoded in base64 format.
+ */
+export function readBinaryFileAdBase64Sync(filePath: string): string {
+    const content = fsSync.readFileSync(filePath);
+    return content.toString("base64");
+}
+
+/**
+ * Determines if the specified file is a binary file.
+ *
+ * @param filePath - The path to the file to check.
+ * @returns `true` if the file is a binary file, otherwise `false`.
+ */
+export function isBinaryFile(filePath: string): boolean {
+    return isBinaryFileSync(filePath);
 }
 
 /**
@@ -554,7 +624,3 @@ export async function writeTextFile(
         throw error;
     }
 }
-
-
-
-

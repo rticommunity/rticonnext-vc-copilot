@@ -10,6 +10,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import { Installation, Architecture, getDefaultInstallation } from "./installation";
+import {readBinaryFileAdBase64Sync, isSupportedImageFile, isBinaryFile} from "./utils";
 
 let START_WORKSPACE_INFO = `[Start Workspace Info]\n`;
 let END_WORKSPACE_INFO = `[End Workspace Info]\n`;
@@ -63,6 +64,14 @@ export class PromptReference {
  */
 export class FilePromptReference extends PromptReference {
     /**
+     * Indicate if the reference is a system representation reference
+     * (image or draw.io file). It is set to unknown by default.
+     * 
+     * Unknown: The reference is not a system representation reference.
+     */
+    sytemRepresentationKind: SystemRepresentation;
+
+    /**
      * Creates an instance of `FilePromptReference`.
      * @param location - The location of the file.
      */
@@ -70,7 +79,18 @@ export class FilePromptReference extends PromptReference {
         super();
         this.kind = PromptReferenceKind.File;
         this.uri = location;
-        this.content = this.readFileContent();
+        this.sytemRepresentationKind = SystemRepresentation.Unknown;
+
+        if (isBinaryFile(location.fsPath)) {
+            this.content = readBinaryFileAdBase64Sync(location.fsPath);
+            this.sytemRepresentationKind = SystemRepresentation.Image;
+        } else {
+            let extension = location.fsPath.split(".").pop();
+            if (extension === "drawio") {
+                this.sytemRepresentationKind = SystemRepresentation.DrawIO;
+            }
+            this.content = this.readFileContent();
+        }
     }
 
     /**
@@ -117,8 +137,17 @@ export class SelectionPromptReference extends PromptReference {
     }
 }
 
+/**
+ * Converts an array of `vscode.ChatPromptReference` objects to an array of `PromptReference` objects.
+ *
+ * @param references - An array of `vscode.ChatPromptReference` objects or `undefined`.
+ * @param onlyTextFiles - A boolean indicating whether to include only text files. Defaults to `false`.
+ * @param includeAllOpenFiles - A boolean indicating whether to include all open files. Defaults to `false`.
+ * @returns An array of `PromptReference` objects.
+ */
 function chatPromptReferenceToPromptReference(
     references: readonly vscode.ChatPromptReference[] | undefined,
+    onlyTextFiles: boolean = false,
     includeAllOpenFiles: boolean = false
 ): PromptReference[] {
     let promptReferences: PromptReference[] = [];
@@ -133,6 +162,13 @@ function chatPromptReferenceToPromptReference(
                     ref.value instanceof vscode.Uri &&
                     ref.value.scheme === "file"
                 ) {
+                    if (isBinaryFile(ref.value.fsPath)) {
+                        if (!isSupportedImageFile(ref.value.fsPath) || onlyTextFiles) {
+                            /* We only support images for now as binary files */
+                            continue;
+                        }
+                    }
+
                     let promptRef: FilePromptReference = new FilePromptReference(
                         ref.value
                     );
@@ -159,9 +195,22 @@ function chatPromptReferenceToPromptReference(
         }
 
         if (includeAllOpenFiles) {
-            const openFiles = getOpenFiles();
+            let openFiles = undefined;
+            if (onlyTextFiles) {
+                openFiles = getOpenTextFiles();
+            } else {
+                openFiles = getAllOpenFiles();
+            }
+
             for (let file of openFiles) {
                 let promptRef: FilePromptReference | undefined = undefined;
+
+                if (isBinaryFile(file)) {
+                    if (!isSupportedImageFile(file)) {
+                        /* We only support images for now as binary files */
+                        continue;
+                    }
+                }
 
                 try {
                     promptRef =new FilePromptReference(
@@ -204,7 +253,7 @@ function generatePromptWithWorkspaceInfo(
     let promptReferences: PromptReference[] = [];
 
     if ((references != undefined && references.length > 0) || includeAllOpenFiles) {
-        promptReferences = chatPromptReferenceToPromptReference(references, includeAllOpenFiles);
+        promptReferences = chatPromptReferenceToPromptReference(references, true, includeAllOpenFiles);
     }
 
     // Return the original prompt if no references or default installations are provided
@@ -250,13 +299,20 @@ function generatePromptWithWorkspaceInfo(
 
         promptWithInfo += "\n";
     }
+
+    promptWithInfo += `If there are images in the request content, use them to respond as well.\n`;
     promptWithInfo += END_WORKSPACE_INFO;
 
     return promptWithInfo;
 }
 
 
-function getOpenFiles(): string[] {
+/**
+ * Retrieves the file paths of all currently open text files in the editor.
+ *
+ * @returns {string[]} An array of file paths of the open text files.
+ */
+function getOpenTextFiles(): string[] {
     const openEditors = vscode.workspace.textDocuments;
     let openFiles: string[] = [];
 
@@ -267,6 +323,32 @@ function getOpenFiles(): string[] {
             openFiles.push(filePath);
         });
     }
+
+    return openFiles;
+}
+
+/**
+ * Retrieves a list of file paths for all currently open files in the editor.
+ *
+ * This function iterates through all tab groups and their respective tabs,
+ * collecting the file paths of open text files and custom binary files (e.g., images)
+ * that are opened by extensions.
+ *
+ * @returns {string[]} An array of file paths for all open files.
+ */
+function getAllOpenFiles(): string[] {
+    let openFiles: string[] = [];
+    
+    vscode.window.tabGroups.all.forEach(group => {
+        group.tabs.forEach(tab => {
+            if (tab.input instanceof vscode.TabInputText) {
+                openFiles.push(tab.input.uri.fsPath);
+            } else if (tab.input instanceof vscode.TabInputCustom) {
+                // Handles custom binary files opened by extensions (e.g., images)
+                openFiles.push(tab.input.uri.fsPath);
+            }
+        });
+    });
 
     return openFiles;
 }
@@ -328,13 +410,35 @@ export function getPrompt(
             if (previousMessages[i] instanceof vscode.ChatRequestTurn) {
                 const turn = previousMessages[i] as vscode.ChatRequestTurn;
 
+                let promptValue: string | null = turn.prompt;
+
+                if (
+                    turn.command != undefined &&
+                    turn.command == "generateSystemXmlModel"
+                ) {
+                    // The prompt does not have a value and we have to generate
+                    // a prompt for the history based on what it was used
+                    // in the command. We ignore the references in this case.
+                    // because we may not have the references available 
+                    // anymore
+                    promptValue = getGenerateSystemXmlModelPrompt(
+                        undefined,
+                        false,
+                        true
+                    );
+
+                    if (promptValue == null) {
+                        promptValue = turn.prompt;
+                    }
+                }
+
                 let request = "";
                 if (rest_api) {
                     request += BeginHumanRestMessage;
-                    request += `${turn.prompt}\n`;
+                    request += `${promptValue}\n`;
                     request += EndHumanRestMessage;
                 } else {
-                    request += `${HumanMessage} ${turn.prompt}\n`;
+                    request += `${HumanMessage} ${promptValue}\n`;
                 }
 
                 previousMessagesList.unshift(request);
@@ -467,19 +571,162 @@ export function getPrompt(
     return promptWithContext;
 }
 
-export function getGenerateSystemXmlModelPrompt(): string {
-    return `**Generate a complete and valid RTI DDS system configuration in 
-    OMG XML from the drawio diagram in the open files.** 
-    
-    The response must strictly include the validated XML code. The system for 
-    the input description should incorporate the following components:
+/**
+ * Retrieves images from the provided references or from all open files if specified.
+ *
+ * @param references - An array of chat prompt references or undefined.
+ * @param includeAllOpenFiles - A boolean indicating whether to include all open files. Defaults to false.
+ * @returns An array of objects containing image data and its type.
+ */
+export function getImages(
+    references: readonly vscode.ChatPromptReference[] | undefined,
+    includeAllOpenFiles: boolean = false
+) : { image: string; type: string; }[] {
+    let promptReferences: PromptReference[] = [];
 
-    - Data types
+    if (
+        (references != undefined && references.length > 0) ||
+        includeAllOpenFiles
+    ) {
+        promptReferences = chatPromptReferenceToPromptReference(
+            references,
+            false,
+            includeAllOpenFiles
+        );
+    }
+
+    let images: { image: string; type: string; }[] = [];
+
+    if (promptReferences.length == 0) {
+        return images;
+    }
+
+    for (let ref of promptReferences) {
+        if (ref.kind == PromptReferenceKind.File) {
+            let fileRef = ref as FilePromptReference;
+
+            if (fileRef.content == undefined || fileRef.uri == undefined) {
+                continue;
+            }
+
+            let extension = fileRef.uri.fsPath.split(".").pop();
+
+            images.push({
+                image: fileRef.content,
+                type: `image/${extension?.toLowerCase()}`,
+            });
+        }
+    }
+
+    return images;
+}
+
+/**
+ * Enum representing different types of system representations.
+ */
+export enum SystemRepresentation {
+    Image,
+    DrawIO,
+    Unknown,
+}
+
+/**
+ * Converts a `SystemRepresentation` enum value to its corresponding string representation.
+ *
+ * @param system_representation - The `SystemRepresentation` enum value to convert.
+ * @returns The string representation of the given `SystemRepresentation` value.
+ *          Returns "image" for `SystemRepresentation.Image`, "draw.io" for `SystemRepresentation.DrawIO`,
+ *          and "unknown" for any other value.
+ */
+function getSystemRepresentationStr(system_representation: SystemRepresentation): string {
+    switch (system_representation) {
+        case SystemRepresentation.Image:
+            return "image";
+        case SystemRepresentation.DrawIO:
+            return "draw.io";
+        default:
+            return "unknown";
+    }
+}
+
+/**
+ * Generates a prompt for creating a complete and valid RTI DDS system configuration
+ * in OMG XML format based on the provided references and open files.
+ *
+ * @param references - An array of chat prompt references, which can be undefined.
+ * @param includeAllOpenFiles - A boolean indicating whether to include all open files in the prompt generation. Defaults to false.
+ * @param ignoreReferences - A boolean indicating whether to ignore the provided references. Defaults to false.
+ * @returns A string containing the generated prompt, or null if the system representation is unknown.
+ */
+export function getGenerateSystemXmlModelPrompt(
+    references: readonly vscode.ChatPromptReference[] | undefined,
+    includeAllOpenFiles: boolean = false,
+    ignoreReferences: boolean = false
+): string | null {
+    let promptReferences: PromptReference[] = [];
+    let source_str = ""
+
+    if (!ignoreReferences) {
+        if (
+            (references != undefined && references.length > 0) ||
+            includeAllOpenFiles
+        ) {
+            promptReferences = chatPromptReferenceToPromptReference(
+                references,
+                false,
+                includeAllOpenFiles
+            );
+        }
+
+        let source = SystemRepresentation.Unknown;
+
+        for (let ref of promptReferences) {
+            if (ref.kind == PromptReferenceKind.File) {
+                let refFile = ref as FilePromptReference;
+                if (refFile.sytemRepresentationKind == SystemRepresentation.Image) {
+                    source = SystemRepresentation.Image;
+                    break;
+                } else if (refFile.sytemRepresentationKind == SystemRepresentation.DrawIO) {
+                    source = SystemRepresentation.DrawIO;
+                    break;
+                }
+            }
+        }
+
+        if (source == SystemRepresentation.Unknown) {
+            return null;
+        }
+        
+        source_str = getSystemRepresentationStr(source);
+    }
+
+    return `**Generate a complete and valid RTI DDS system configuration in 
+    OMG XML from the ${source_str} diagram in the open files.** 
+    
+    The response must strictly include the validated XML code. The configuration
+    for the input diagram should incorporate the following elements:
+
+    - Data types in XML format
     - QoS settings
     - Domain
     - Topics
     - Data writers
     - Data readers
     - Any additional elements required for a fully operational RTI DDS system
-    `
+
+    When defining types try to be as complete as possible. Do not use the
+    same type for different kinds of data. Data types that represent
+    the value of an object should always include an ID field. You can use
+    a tool to get help defining the types.
+
+    All components (e.g, sensor, control unit, etc) should be encapsulated in 
+    its own Participant.
+
+    Always preserve the flow of information described by arrows (or lines) in
+    the diagram. If a line goes into a component, it will require a DataReader.
+    If a line goes out of a component, it will require a DataWriter.
+
+    Always provide a baseline builtin QoS profile for each DataWriter and 
+    DataReader. Use a tool to access the builtin QoS profiles.
+    `;
 }

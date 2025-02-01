@@ -24,9 +24,10 @@ import {
     showErrorMessage,
     showInformationMessage,
     askQuestion,
+    supportedImageExtensions
 } from "./utils";
 
-import { getPrompt, getGenerateSystemXmlModelPrompt } from "./prompt";
+import { getPrompt, getImages, getGenerateSystemXmlModelPrompt } from "./prompt";
 import { Auth } from "./auth";
 
 import { createExample, initializeWorkspace } from "./project";
@@ -732,8 +733,24 @@ export async function activate(context: vscode.ExtensionContext) {
             globalState.lastPrompt = request.prompt;
 
             if (request.command === "generateSystemXmlModel") {
-                globalState.lastPrompt = getGenerateSystemXmlModelPrompt();
                 useAllOpenFiles = true;
+                let newPrompt = getGenerateSystemXmlModelPrompt(
+                    request.references,
+                    useAllOpenFiles,
+                    false);
+                
+                if (newPrompt == null) {
+                    let supportedImgExtensions = supportedImageExtensions();
+                    response.markdown(
+                        `This command requires a system model representation in the form of a drawio diagram or an image (${supportedImgExtensions.join(
+                            ", "
+                        )}).`
+                    );
+                    return result;
+                }
+
+                globalState.lastPrompt = newPrompt;
+
             }
 
             // If we don't have an access token, this means the user has not
@@ -903,6 +920,9 @@ export async function activate(context: vscode.ExtensionContext) {
                     true,
                     useAllOpenFiles
                 ),
+                base64_images: getImages(
+                    request.references,
+                    useAllOpenFiles)
             };
 
             socket.emit("message", JSON.stringify(jsonPayload));
