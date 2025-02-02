@@ -1,7 +1,7 @@
 # Welcome to Connext for Github Copilot
 
 This Visual Code extension brings the power of 
-Connext Intelligence to Github Copilot Chat.
+Connext AI to Github Copilot Chat.
 
 To access the Connext expert, simply type `@connext` followed by your 
 question in the Copilot chat window. Once you type `@connext`, it will 
@@ -12,7 +12,7 @@ stay active allowing you to ask multiple questions without having to type
 
 To access the Connext expert, you need the following:
 
-* An account on [Connext Intelligence](https://chatbot.rti.com/)
+* An account on [Connext AI](https://chatbot.rti.com/)
 * A Copilot license
 
 You will also need to install the GitHub Copilot Chat extension.
@@ -72,6 +72,11 @@ The available commands are:
     to change the publisher and subscriber code. This command uses the rtiddsgen
     tool to generate the code for the example. This command is great to 
     inspect and play with the generated code and see how it works.
+* `/drawDiagram`: It opens draw.io extension to create a diagram. From this 
+    diagram, you can generate an Connext system XML model using the command
+    `/generateSystemXmlModel`.
+* `/generateSystemXmlModel`: It generates a Connext system XML model from a
+    draw.io diagram or an image.
 
 The commands that start tools and generate a new example will fail if there is 
 no default installation configured.

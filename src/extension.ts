@@ -481,7 +481,7 @@ function connextInfo(response: vscode.ChatResponseStream) {
  * - `connext-vc-copilot.explain`: Opens the chat with a prompt to explain the code.
  * - `connext-vc-copilot.fix`: Opens the chat with a prompt to fix the code.
  *
- * It also creates a chat participant for handling user queries and interacting with the Connext Intelligence Platform.
+ * It also creates a chat participant for handling user queries and interacting with the Connext AI Platform.
  */
 export async function activate(context: vscode.ExtensionContext) {
     setExtensionContextForInstallation(context);
@@ -922,7 +922,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 ),
                 base64_images: getImages(
                     request.references,
-                    useAllOpenFiles)
+                    useAllOpenFiles),
+                session_memory: false,
             };
 
             socket.emit("message", JSON.stringify(jsonPayload));

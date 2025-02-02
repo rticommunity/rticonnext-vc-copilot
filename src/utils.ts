@@ -182,7 +182,7 @@ export async function makeHttpRequest(
 }
 
 /**
- * Asks a question to the Connext Intelligence Platform.
+ * Asks a question to the Connext AI Platform.
  *
  * @param question - The question to ask.
  * @param accessCode - The access code to authenticate with the Intelligence Platform.
@@ -227,6 +227,7 @@ export async function askQuestionToConnext(
         },
         body: JSON.stringify({
             question: question,
+            session_memory: false,
         }),
     };
 

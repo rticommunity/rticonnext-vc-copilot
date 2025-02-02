@@ -1,7 +1,7 @@
 {
     "name": "connext-vc-copilot",
     "displayName": "Connext for Github Copilot",
-    "description": "Bringing the power of Connext Intelligence to GitHub Copilot Chat",
+    "description": "Bringing the power of Connext AI to GitHub Copilot Chat",
     "version": "0.0.20",
     "publisher": "Real-Time Innovations",
     "icon": "images/bot_avatar.png",
@@ -140,7 +140,7 @@
                 "connext.intelligencePlatformUrl": {
                     "type": "string",
                     "default": "wss://sandbox-chatbot.rti.com",
-                    "description": "The URL of the Connext Intelligence server"
+                    "description": "The URL of the Connext AI server"
                 },
                 "connext.useAllOpenFilesForContext": {
                     "type": "boolean",
